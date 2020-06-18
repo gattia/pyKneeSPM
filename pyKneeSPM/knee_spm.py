@@ -310,18 +310,17 @@ class SimpleTimeDifference(SingleStatisticSPM):
         self.test_statistic_maps[self.map_name] = test.get_statistics_mesh()
 
     def compute_mc_thresholds(self):
-        for threshold in self.map_threshold:
-            mc_sim = MonteCarloClusterOneSampleTest(self.reference_mesh['mesh'],
-                                                    self.change_values,  # shape = (participants, pts, other... factors)
-                                                    method=self.mc_cluster_method,
-                                                    threshold=threshold,
-                                                    n_iterations=self.n_monte_carlo_iterations,
-                                                    idx_not_to_include=self.idx_no_data,
-                                                    idx_to_include=None)
-            mc_sim.update()
-            self.threshold_cluster_distribution[threshold] = mc_sim.get_distribution_of_max_clustersizes()
-            self.threshold_cluster_size[threshold] = mc_sim.get_threshold_clustersize(threshold=self.mc_cluster_extent_significance)
-            self.threshold_test_statistic[threshold] = mc_sim.get_threshold_test_statistic(threshold=self.mc_point_significance)
+        mc_sim = MonteCarloClusterOneSampleTest(self.reference_mesh['mesh'],
+                                                self.change_values,  # shape = (participants, pts, other... factors)
+                                                method=self.mc_cluster_method,
+                                                threshold=self.map_threshold,
+                                                n_iterations=self.n_monte_carlo_iterations,
+                                                idx_not_to_include=self.idx_no_data,
+                                                idx_to_include=None)
+        mc_sim.update()
+        self.threshold_cluster_distribution = mc_sim.get_distribution_of_max_clustersizes()
+        self.threshold_cluster_size = mc_sim.get_threshold_clustersize(threshold=self.mc_cluster_extent_significance)
+        self.threshold_test_statistic = mc_sim.get_threshold_test_statistic(threshold=self.mc_point_significance)
 
 
 
@@ -481,18 +480,17 @@ class SimpleCorrelation(SingleStatisticSPM):
         This is essentially the same as the logic in the SimpleTimeDifference class. Should look at combining
         :return:
         """
-        for threshold in self.map_threshold:
-            mc_sim = MonteCarloClusterCorrelationTest(self.reference_mesh['mesh'],
-                                                      self.change_values,  # shape = (participants, pts, other... factors)
-                                                      method=self.mc_cluster_method,
-                                                      threshold=threshold,
-                                                      n_iterations=self.n_monte_carlo_iterations,
-                                                      idx_not_to_include=self.idx_no_data,
-                                                      idx_to_include=None)
-            mc_sim.update()
-            self.threshold_cluster_distribution[threshold] = mc_sim.get_distribution_of_max_clustersizes()
-            self.threshold_cluster_size[threshold] = mc_sim.get_threshold_clustersize(threshold=self.mc_cluster_extent_significance)
-            self.threshold_test_statistic[threshold] = mc_sim.get_threshold_test_statistic(threshold=self.mc_point_significance)
+        mc_sim = MonteCarloClusterCorrelationTest(self.reference_mesh['mesh'],
+                                                  self.change_values,  # shape = (participants, pts, other... factors)
+                                                  method=self.mc_cluster_method,
+                                                  threshold=self.map_threshold,
+                                                  n_iterations=self.n_monte_carlo_iterations,
+                                                  idx_not_to_include=self.idx_no_data,
+                                                  idx_to_include=None)
+        mc_sim.update()
+        self.threshold_cluster_distribution = mc_sim.get_distribution_of_max_clustersizes()
+        self.threshold_cluster_size = mc_sim.get_threshold_clustersize(threshold=self.mc_cluster_extent_significance)
+        self.threshold_test_statistic = mc_sim.get_threshold_test_statistic(threshold=self.mc_point_significance)
 
 
 

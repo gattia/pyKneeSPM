@@ -10,7 +10,7 @@ class MonteCarloThreshold(object):
                  ref_mesh,
                  data,  #M = participants, N = vertices, remaining dimensions may be for more complicated designs
                  method='permutation',
-                 threshold=2.33,
+                 map_threshold=2.33,
                  n_iterations=1000,
                  idx_not_to_include=None,
                  idx_to_include=None):
@@ -18,7 +18,7 @@ class MonteCarloThreshold(object):
         self.data = data
         self.n_participants, self.n_points = data.shape[:2]
         self.method = method
-        self.threshold = threshold
+        self.map_threshold = map_threshold if type(map_threshold) in (list, tuple) else [map_threshold, ]
         self.n_iterations = n_iterations
         # Handle the case where either just idx_not_to_include or idx_to_include is provided (and not the other).
         if (idx_not_to_include is None) & (idx_to_include is not None):
@@ -46,12 +46,15 @@ class MonteCarloSingleTest(MonteCarloThreshold):
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.map_name = map_name
-        self.cluster_sizes[self.map_name] = {'all': []}
         self.rand_permutations = None
         self.threshold_clustersizes = {}
         self.max_test_statistics[self.map_name] = {'min': [],
                                                    'max': [],
                                                    'abs_max': []}
+        self.cluster_sizes[self.map_name] = {'all': {},
+                                             'max': {}}
+        for map_threshold in self.map_threshold:
+            self.cluster_sizes[self.map_name]['all'][map_threshold] = []
         self.threshold_test_statistics = {}
 
     def get_threshold_test_statistic(self, threshold=0.05):
@@ -65,20 +68,23 @@ class MonteCarloSingleTest(MonteCarloThreshold):
         self.threshold_test_statistics[threshold] = sorted_max_test_statistics[threshold_idx - 1]
 
     def get_distribution_of_max_clustersizes(self):
-        return sorted(self.cluster_sizes[self.map_name]['max'])
+        return sorted(self.cluster_sizes[self.map_name]['all'])
 
     def get_threshold_clustersize(self, threshold=0.05):
         if threshold not in self.threshold_clustersizes:
+            self.threshold_clustersizes[threshold] = {}
             self.calc_threshold_clustersize(threshold=threshold)
         return self.threshold_clustersizes[threshold]
 
     def calc_threshold_clustersize(self, threshold=0.05):
         threshold_idx = np.ceil((1-threshold) * self.n_iterations).astype(np.int)
-        sorted_max_clustersizes = sorted(self.cluster_sizes[self.map_name]['max'])
-        self.threshold_clustersizes[threshold] = sorted_max_clustersizes[threshold_idx-1]
+        for map_threshold in self.map_threshold:
+            sorted_max_clustersizes = sorted(self.cluster_sizes[self.map_name]['max'][map_threshold])
+            self.threshold_clustersizes[threshold][map_threshold] = sorted_max_clustersizes[threshold_idx-1]
 
     def find_max_cluster_sizes(self):
-        self.cluster_sizes[self.map_name]['max'] = [np.nanmax(x) if len(x) > 0 else 0 for x in self.cluster_sizes[self.map_name]['all']]
+        for map_threshold in self.map_threshold:
+            self.cluster_sizes[self.map_name]['max'][map_threshold] = [np.nanmax(x) if len(x) > 0 else 0 for x in self.cluster_sizes[self.map_name]['all'][map_threshold]]
 
     def update(self):
         if self.method == 'permutation':
@@ -144,13 +150,14 @@ class MonteCarloClusterOneSampleTest(MonteCarloSingleTest):
             self.max_test_statistics[self.map_name]['max'].append(np.nanmax(z_scalars))
             self.max_test_statistics[self.map_name]['abs_max'].append(np.nanmax(np.abs(z_scalars)))
 
-            clust = Cluster(statistic_mesh=z_mesh,
-                            statistic_threshold=self.threshold,
-                            threshold_type='two_sided',
-                            clust_names='cluster',
-                            clust_idx=0)
-            areas = clust.get_areas()
-            self.cluster_sizes[self.map_name]['all'].append(areas)
+            for map_threshold in self.map_threshold:
+                clust = Cluster(statistic_mesh=z_mesh,
+                                statistic_threshold=map_threshold,
+                                threshold_type='two_sided',
+                                clust_names='cluster',
+                                clust_idx=0)
+                areas = clust.get_areas()
+                self.cluster_sizes[self.map_name]['all'][map_threshold].append(areas)
             print('Completed iteration: {}/{}'.format(iter_+1, self.n_iterations))
 
 
@@ -193,13 +200,14 @@ class MonteCarloClusterCorrelationTest(MonteCarloSingleTest):
             self.max_test_statistics[self.map_name]['max'].append(np.nanmax(t_scalars))
             self.max_test_statistics[self.map_name]['abs_max'].append(np.nanmax(np.abs(t_scalars)))
 
-            clust = Cluster(statistic_mesh=t_mesh,
-                            statistic_threshold=self.threshold,
-                            threshold_type='two_sided',
-                            clust_names='cluster',
-                            clust_idx=0)
-            areas = clust.get_areas()
-            self.cluster_sizes[self.map_name]['all'].append(areas)
+            for map_threshold in self.map_threshold:
+                clust = Cluster(statistic_mesh=t_mesh,
+                                statistic_threshold=map_threshold,
+                                threshold_type='two_sided',
+                                clust_names='cluster',
+                                clust_idx=0)
+                areas = clust.get_areas()
+                self.cluster_sizes[self.map_name]['all'][map_threshold].append(areas)
             print('Completed iteration: {}/{}'.format(iter_+1, self.n_iterations))
 
 
