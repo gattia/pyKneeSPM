@@ -42,13 +42,20 @@ class OneSampleZTest(TestStatistics):
             z_score_change[self.idx_not_to_include] = 0
 
         z_score_change = replace_non_finite_values(z_score_change, replace_value=0.)
+        mean_change = replace_non_finite_values(mean_change, replace_value=0.)
 
         z_scalars = numpy_to_vtk(z_score_change)
         z_scalars.SetName('z_statistic')
+
+        mean_change_scalars = numpy_to_vtk(mean_change)
+        mean_change_scalars.SetName('mean_change')
+
         if self.return_new_mesh is True:
-            self.test_statistics_mesh.GetPointData().SetScalars(z_scalars)
+            self.test_statistics_mesh.GetPointData().AddArray(z_scalars)
+            self.test_statistics_mesh.GetPointData().AddArray(mean_change_scalars)
         elif self.return_new_mesh is False:
-            self.mesh.GetPointData().SetScalars(z_scalars)
+            self.mesh.GetPointData().AddArray(z_scalars)
+            self.mesh.GetPointData().AddArray(mean_change_scalars)
 
 
 class CorrelationTTest(TestStatistics):

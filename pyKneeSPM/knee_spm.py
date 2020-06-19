@@ -19,6 +19,7 @@ class SPM(object):
         self.reference_mesh = {}
         self.test_statistic_maps = {}
         self.clustered_test_statistic_maps = {}
+        self.combined_clustered_meshes = {}
 
     def get_test_statistic_maps(self):
         return self.test_statistic_maps
@@ -224,6 +225,17 @@ class SingleStatisticSPM(SPM):
 
         if self.compute_min_cluster_size is True:
             self.compute_mc_thresholds()
+
+    def create_mesh_all_clusters_per_threshold(self):
+        self.combined_clustered_meshes = {}
+        # Iterate over all map_threshold.
+        for map_threshold in self.map_threshold:
+            # Add the clusters - they should have the test statistic & the "raw" result - correlation, mean change, etc.
+            self.combined_clustered_meshes[map_threshold] = combine_clusters_to_one_map(self.clustered_test_statistic_maps[self.map_name][map_threshold])
+
+    def get_combined_clusters(self):
+        self.create_mesh_all_clusters_per_threshold()
+        return self.combined_clustered_meshes
 
 
 class SimpleTimeDifference(SingleStatisticSPM):
@@ -492,6 +504,12 @@ class SimpleCorrelation(SingleStatisticSPM):
         self.threshold_test_statistic = mc_sim.get_threshold_test_statistic(threshold=self.mc_point_significance)
 
 
-
-
-
+def combine_clusters_to_one_map(dict_clusters):
+    dict_combined_clusters = {}
+    combine_poly = vtk.vtkAppendPolyData()
+    for clus_key in dict_clusters.keys():
+        combine_poly.AddInputData(dict_clusters[clus_key]['mesh'])
+    combine_poly.Update()
+    new_polydata = vtk.vtkPolyData()
+    new_polydata.DeepCopy(combine_poly.GetOutput())
+    return new_polydata
