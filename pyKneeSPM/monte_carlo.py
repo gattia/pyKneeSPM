@@ -68,7 +68,7 @@ class MonteCarloSingleTest(MonteCarloThreshold):
         self.threshold_test_statistics[threshold] = sorted_max_test_statistics[threshold_idx - 1]
 
     def get_distribution_of_max_clustersizes(self):
-        return sorted(self.cluster_sizes[self.map_name]['all'])
+        return self.cluster_sizes[self.map_name]['all']
 
     def get_threshold_clustersize(self, threshold=0.05):
         if threshold not in self.threshold_clustersizes:

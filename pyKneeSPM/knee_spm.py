@@ -313,7 +313,7 @@ class SimpleTimeDifference(SingleStatisticSPM):
         mc_sim = MonteCarloClusterOneSampleTest(self.reference_mesh['mesh'],
                                                 self.change_values,  # shape = (participants, pts, other... factors)
                                                 method=self.mc_cluster_method,
-                                                threshold=self.map_threshold,
+                                                map_threshold=self.map_threshold,
                                                 n_iterations=self.n_monte_carlo_iterations,
                                                 idx_not_to_include=self.idx_no_data,
                                                 idx_to_include=None)
@@ -321,7 +321,6 @@ class SimpleTimeDifference(SingleStatisticSPM):
         self.threshold_cluster_distribution = mc_sim.get_distribution_of_max_clustersizes()
         self.threshold_cluster_size = mc_sim.get_threshold_clustersize(threshold=self.mc_cluster_extent_significance)
         self.threshold_test_statistic = mc_sim.get_threshold_test_statistic(threshold=self.mc_point_significance)
-
 
 
 class SimpleCorrelation(SingleStatisticSPM):
@@ -483,7 +482,7 @@ class SimpleCorrelation(SingleStatisticSPM):
         mc_sim = MonteCarloClusterCorrelationTest(self.reference_mesh['mesh'],
                                                   self.change_values,  # shape = (participants, pts, other... factors)
                                                   method=self.mc_cluster_method,
-                                                  threshold=self.map_threshold,
+                                                  map_threshold=self.map_threshold,
                                                   n_iterations=self.n_monte_carlo_iterations,
                                                   idx_not_to_include=self.idx_no_data,
                                                   idx_to_include=None)
