@@ -77,6 +77,7 @@ class SingleStatisticSPM(SPM):
         self.threshold_cluster_size = {}
         self.threshold_test_statistic = {}
         self.sig_clusters = {}
+        self.combined_sig_clustered_meshes = {}
 
     def calc_significant_clusters(self):
         # This first line is specific to the onesample test... need to extend for multi statistic tests
@@ -199,14 +200,14 @@ class SingleStatisticSPM(SPM):
         """
 
     def cluster_test_statistics(self):
-        for threshold in self.map_threshold:
+        for map_threshold in self.map_threshold:
             clust = Cluster(statistic_mesh=self.test_statistic_maps[self.map_name],
-                            statistic_threshold=threshold,
+                            statistic_threshold=map_threshold,
                             threshold_type='two_sided',
                             clust_names='cluster',
                             clust_idx=0
                             )
-            self.clustered_test_statistic_maps[self.map_name][threshold] = clust.get_clusters()
+            self.clustered_test_statistic_maps[self.map_name][map_threshold] = clust.get_clusters()
 
     def compute_mc_thresholds(self):
         """
@@ -236,6 +237,32 @@ class SingleStatisticSPM(SPM):
     def get_combined_clusters(self):
         self.create_mesh_all_clusters_per_threshold()
         return self.combined_clustered_meshes
+
+    def create_mesh_all_sig_clusters_per_threshold(self):
+        if self.compute_min_cluster_size is False:
+            self.compute_mc_thresholds()
+
+        self.calc_significant_clusters()
+        for map_threshold in self.map_threshold:
+            # Add the clusters - they should have the test statistic & the "raw" result - correlation, mean change, etc.
+            self.combined_sig_clustered_meshes[map_threshold] = combine_clusters_to_one_map(
+                self.sig_clusters[self.map_name][map_threshold])
+
+        # combine_clusters_to_one_map(self.clustered_test_statistic_maps[self.map_name][map_threshold])
+        #
+        # for map_threshold in self.map_threshold:
+        #     threshold_size = self.threshold_cluster_size[map_threshold]
+        #     for cluster_name in self.clustered_test_statistic_maps[self.map_name][map_threshold].keys():
+        #         clust_area = self.clustered_test_statistic_maps[self.map_name][map_threshold][cluster_name]['area']
+        #         if  clust_area
+        #
+        #     self.clustered_test_statistic_maps[self.map_name][map_threshold] = clust.get_clusters()
+
+    def get_combined_significant_clusters(self):
+        self.create_mesh_all_sig_clusters_per_threshold()
+        return self.combined_sig_clustered_meshes
+
+
 
 
 class SimpleTimeDifference(SingleStatisticSPM):
@@ -309,6 +336,7 @@ class SimpleTimeDifference(SingleStatisticSPM):
         self.change_values[np.isnan(self.change_values)] = 0
         self.change_values[np.isinf(self.change_values)] = 0
         self.change_values[np.isneginf(self.change_values)] = 0
+
     def compute_test_statistics(self):
         n_ppl_with_data_change_per_point = np.sum(self.change_values != 0, axis=0)
         self.idx_no_data = np.where(n_ppl_with_data_change_per_point <
@@ -319,6 +347,8 @@ class SimpleTimeDifference(SingleStatisticSPM):
                                               idx_not_to_include=self.idx_no_data
                                               )
         test.compute_statistics_per_node()
+        test_mesh = test.get_statistics_mesh()
+        test_mesh.GetPointData().SetActiveScalars(self.map_name)
         self.test_statistic_maps[self.map_name] = test.get_statistics_mesh()
 
     def compute_mc_thresholds(self):
@@ -505,7 +535,6 @@ class SimpleCorrelation(SingleStatisticSPM):
 
 
 def combine_clusters_to_one_map(dict_clusters):
-    dict_combined_clusters = {}
     combine_poly = vtk.vtkAppendPolyData()
     for clus_key in dict_clusters.keys():
         combine_poly.AddInputData(dict_clusters[clus_key]['mesh'])
