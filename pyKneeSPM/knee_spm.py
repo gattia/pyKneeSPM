@@ -1,9 +1,10 @@
 import numpy as np
 from vtk.util.numpy_support import numpy_to_vtk, vtk_to_numpy
 from .vtk_functions import (read_vtk,
-                           apply_transform,
-                           get_icp_transform,
-                           transfer_mesh_scalars_get_weighted_average_n_closest)
+                            apply_transform,
+                            get_icp_transform,
+                            transfer_mesh_scalars_get_weighted_average_n_closest,
+                            transfer_clusters_to_ref_mesh)
 from . import test_statistics
 from .clustering import Cluster
 from .monte_carlo import *
@@ -78,6 +79,7 @@ class SingleStatisticSPM(SPM):
         self.threshold_test_statistic = {}
         self.sig_clusters = {}
         self.combined_sig_clustered_meshes = {}
+        self.sig_clusters_meshes = {}
 
     def calc_significant_clusters(self):
         # This first line is specific to the onesample test... need to extend for multi statistic tests
@@ -232,7 +234,10 @@ class SingleStatisticSPM(SPM):
         # Iterate over all map_threshold.
         for map_threshold in self.map_threshold:
             # Add the clusters - they should have the test statistic & the "raw" result - correlation, mean change, etc.
-            self.combined_clustered_meshes[map_threshold] = combine_clusters_to_one_map(self.clustered_test_statistic_maps[self.map_name][map_threshold])
+            if len(self.clustered_test_statistic_maps[self.map_name][map_threshold].keys()) == 0:
+                self.combined_clustered_meshes[map_threshold] = 'no_significant_clusters'
+            else:
+                self.combined_clustered_meshes[map_threshold] = combine_clusters_to_one_map(self.clustered_test_statistic_maps[self.map_name][map_threshold])
 
     def get_combined_clusters(self):
         self.create_mesh_all_clusters_per_threshold()
@@ -248,21 +253,22 @@ class SingleStatisticSPM(SPM):
             self.combined_sig_clustered_meshes[map_threshold] = combine_clusters_to_one_map(
                 self.sig_clusters[self.map_name][map_threshold])
 
-        # combine_clusters_to_one_map(self.clustered_test_statistic_maps[self.map_name][map_threshold])
-        #
-        # for map_threshold in self.map_threshold:
-        #     threshold_size = self.threshold_cluster_size[map_threshold]
-        #     for cluster_name in self.clustered_test_statistic_maps[self.map_name][map_threshold].keys():
-        #         clust_area = self.clustered_test_statistic_maps[self.map_name][map_threshold][cluster_name]['area']
-        #         if  clust_area
-        #
-        #     self.clustered_test_statistic_maps[self.map_name][map_threshold] = clust.get_clusters()
-
     def get_combined_significant_clusters(self):
         self.create_mesh_all_sig_clusters_per_threshold()
         return self.combined_sig_clustered_meshes
 
+    def create_full_mesh_sig_clusters_per_threshold(self):
+        self.create_mesh_all_sig_clusters_per_threshold()
 
+        for map_threshold in self.map_threshold:
+            self.sig_clusters_meshes[map_threshold] = transfer_clusters_to_ref_mesh(
+                self.reference_mesh['mesh'],
+                self.combined_sig_clustered_meshes[map_threshold]
+            )
+
+    def get_full_mesh_sig_clusters(self):
+        self.create_full_mesh_sig_clusters_per_threshold()
+        return self.combined_sig_clustered_meshes
 
 
 class SimpleTimeDifference(SingleStatisticSPM):
