@@ -268,7 +268,7 @@ class SingleStatisticSPM(SPM):
 
     def get_full_mesh_sig_clusters(self):
         self.create_full_mesh_sig_clusters_per_threshold()
-        return self.combined_sig_clustered_meshes
+        return self.sig_clusters_meshes
 
 
 class SimpleTimeDifference(SingleStatisticSPM):
