@@ -261,10 +261,15 @@ class SingleStatisticSPM(SPM):
         self.create_mesh_all_sig_clusters_per_threshold()
 
         for map_threshold in self.map_threshold:
-            self.sig_clusters_meshes[map_threshold] = transfer_clusters_to_ref_mesh(
-                self.reference_mesh['mesh'],
-                self.combined_sig_clustered_meshes[map_threshold]
-            )
+            tmp_clust = self.combined_sig_clustered_meshes[map_threshold]
+            if tmp_clust.GetNumberOfPoints() > 0:
+                self.sig_clusters_meshes[map_threshold] = transfer_clusters_to_ref_mesh(
+                    self.reference_mesh['mesh'],
+                    self.combined_sig_clustered_meshes[map_threshold]
+                )
+            else:
+                self.sig_clusters_meshes[map_threshold] = 'no_significant_clusters'
+
 
     def get_full_mesh_sig_clusters(self):
         self.create_full_mesh_sig_clusters_per_threshold()

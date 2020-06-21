@@ -78,22 +78,24 @@ def transfer_clusters_to_ref_mesh(ref_mesh, cluster_mesh):
     kDTree.SetDataSet(ref_mesh)
     kDTree.BuildLocator()
 
+    # Create new mesh to store results.
+    new_mesh = vtk.vtkPolyData()
+    new_mesh.DeepCopy(ref_mesh)
+    new_mesh = delete_arrays_mesh(new_mesh)
+
     # Create dicts to store existing scalars & pre-allocate empty arrays for scalars on new mesh.
     new_mesh_arrays = {}
     cluster_mesh_arrays = {}
     n_arrays = cluster_mesh.GetPointData().GetNumberOfArrays()
     # Store array names
     array_names = []
+
     for array_idx in range(n_arrays):
         array_name = cluster_mesh.GetPointData().GetArrayName(array_idx)
         new_mesh_arrays[array_name] = np.zeros(ref_mesh.GetNumberOfPoints())
         cluster_mesh_arrays[array_name] = vtk_to_numpy(cluster_mesh.GetPointData().GetArray(array_name))
         array_names.append(array_name)
 
-    # Create new mesh to store results.
-    new_mesh = vtk.vtkPolyData()
-    new_mesh.DeepCopy(ref_mesh)
-    new_mesh = delete_arrays_mesh(new_mesh)
 
     # Iterate over every point on the cluster mesh:
     for clust_mesh_pt_idx in range(cluster_mesh.GetNumberOfPoints()):
