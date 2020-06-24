@@ -2,6 +2,7 @@ import vtk
 from vtk.util.numpy_support import numpy_to_vtk, vtk_to_numpy
 import numpy as np
 
+
 def clean_polydata(polydata):
     clean_poly = vtk.vtkCleanPolyData()
     clean_poly.SetInputData(polydata)
@@ -78,6 +79,8 @@ def transfer_clusters_to_ref_mesh(ref_mesh, cluster_mesh):
     kDTree.SetDataSet(ref_mesh)
     kDTree.BuildLocator()
 
+    active_scalars_name = cluster_mesh.GetPointData().GetScalars().GetName()
+
     # Create new mesh to store results.
     new_mesh = vtk.vtkPolyData()
     new_mesh.DeepCopy(ref_mesh)
@@ -89,13 +92,11 @@ def transfer_clusters_to_ref_mesh(ref_mesh, cluster_mesh):
     n_arrays = cluster_mesh.GetPointData().GetNumberOfArrays()
     # Store array names
     array_names = []
-
     for array_idx in range(n_arrays):
         array_name = cluster_mesh.GetPointData().GetArrayName(array_idx)
         new_mesh_arrays[array_name] = np.zeros(ref_mesh.GetNumberOfPoints())
         cluster_mesh_arrays[array_name] = vtk_to_numpy(cluster_mesh.GetPointData().GetArray(array_name))
         array_names.append(array_name)
-
 
     # Iterate over every point on the cluster mesh:
     for clust_mesh_pt_idx in range(cluster_mesh.GetNumberOfPoints()):
@@ -112,11 +113,13 @@ def transfer_clusters_to_ref_mesh(ref_mesh, cluster_mesh):
     # Iterate over each array name
     for array_name in array_names:
         # create vtk array
-        scalars = numpy_to_vtk(new_mesh_arrays[array_name])
+        scalars = numpy_to_vtk(np.copy(new_mesh_arrays[array_name]))
         # rename based on the array_name
         scalars.SetName(array_name)
         # assign array to new_mesh.
         new_mesh.GetPointData().AddArray(scalars)
+
+    new_mesh.GetPointData().SetActiveScalars(active_scalars_name)
 
     return new_mesh
 

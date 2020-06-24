@@ -38,6 +38,7 @@ class Cluster(object):
         self.calc_cluster_sizes()
 
     def band_contour_filter(self):
+        statistic_name = self.statistic_mesh.GetPointData().GetScalars().GetName()
         band_contour_filter = vtk.vtkBandedPolyDataContourFilter()
         band_contour_filter.SetInputDataObject(self.statistic_mesh)
         band_contour_filter.SetNumberOfContours(self.n_contours)
@@ -48,6 +49,7 @@ class Cluster(object):
 
         self.band_contour_mesh.DeepCopy(band_contour_filter.GetOutput())
         self.band_contour_mesh.BuildLinks()
+        self.band_contour_mesh.GetPointData().GetScalars().SetName(statistic_name)
 
     def delete_cells_below_threshold(self):
         cell_scalars = vtk_to_numpy(self.band_contour_mesh.GetCellData().GetScalars())
@@ -74,10 +76,14 @@ class Cluster(object):
             if cleaned_clust.GetNumberOfCells() <= 0:
                 break
 
+            if clust.GetNumberOfCells() <= 0:
+                break
+
             self.clusters['{}_{}'.format(self.clust_names, self.clust_idx)] = {}
             self.clusters['{}_{}'.format(self.clust_names, self.clust_idx)]['mesh'] = cleaned_clust
             connectivity.DeleteSpecifiedRegion(self.clust_idx)
             self.clust_idx += 1
+
 
     def calc_cluster_sizes(self):
         for cluster_idx, cluster_key in enumerate(self.clusters.keys()):
@@ -99,3 +105,9 @@ class Cluster(object):
 
     def combine_clusters_to_one_map(self):
         pass
+
+
+def iterate_and_print_array_names(mesh):
+    n_arrays = mesh.GetPointData().GetNumberOfArrays()
+    for array_idx in range(n_arrays):
+        print(mesh.GetPointData().GetArray(array_idx).GetName())

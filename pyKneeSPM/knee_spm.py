@@ -43,7 +43,7 @@ class SingleStatisticSPM(SPM):
                  n_monte_carlo_iterations=10000,
                  idx_no_data=None,
                  percent_participants_with_data_to_include_vertex=0.5,
-                 registration_max_iterations=1000,
+                 registration_max_iterations=10000,
                  **kwargs
                  ):
         super().__init__(*args, **kwargs)
@@ -74,6 +74,7 @@ class SingleStatisticSPM(SPM):
         # Registration parameters
         self.registration_max_iterations = registration_max_iterations
 
+        self.threshold_max_cluster_distribution = {}
         self.threshold_cluster_distribution = {}
         self.threshold_cluster_size = {}
         self.threshold_test_statistic = {}
@@ -91,10 +92,17 @@ class SingleStatisticSPM(SPM):
         for stat_key in self.clustered_test_statistic_maps.keys():
             self.sig_clusters[stat_key] = {}
             for thresh_key in self.clustered_test_statistic_maps[stat_key].keys():
+                distribution = self.threshold_max_cluster_distribution[thresh_key]
                 self.sig_clusters[stat_key][thresh_key] = {}
                 for clust_key in self.clustered_test_statistic_maps[stat_key][thresh_key].keys():
                     if self.clustered_test_statistic_maps[stat_key][thresh_key][clust_key]['area'] >= self.threshold_cluster_size[thresh_key]:
                         self.sig_clusters[stat_key][thresh_key][clust_key] = self.clustered_test_statistic_maps[stat_key][thresh_key][clust_key]
+                        n_bigger_equal = len(np.where(distribution >= self.clustered_test_statistic_maps[stat_key][thresh_key][clust_key]['area'])[0])
+                        p_bigger_equal = n_bigger_equal / len(distribution)
+                        self.sig_clusters[stat_key][thresh_key][clust_key]['significance'] = p_bigger_equal
+
+    def get_max_cluster_distributions(self):
+        return self.threshold_max_cluster_distribution
 
     def get_cluster_distributions(self):
         return self.threshold_cluster_distribution
@@ -235,7 +243,7 @@ class SingleStatisticSPM(SPM):
         for map_threshold in self.map_threshold:
             # Add the clusters - they should have the test statistic & the "raw" result - correlation, mean change, etc.
             if len(self.clustered_test_statistic_maps[self.map_name][map_threshold].keys()) == 0:
-                self.combined_clustered_meshes[map_threshold] = 'no_significant_clusters'
+                self.combined_clustered_meshes[map_threshold] = 'no_clusters'
             else:
                 self.combined_clustered_meshes[map_threshold] = combine_clusters_to_one_map(self.clustered_test_statistic_maps[self.map_name][map_threshold])
 
@@ -250,8 +258,11 @@ class SingleStatisticSPM(SPM):
         self.calc_significant_clusters()
         for map_threshold in self.map_threshold:
             # Add the clusters - they should have the test statistic & the "raw" result - correlation, mean change, etc.
-            self.combined_sig_clustered_meshes[map_threshold] = combine_clusters_to_one_map(
-                self.sig_clusters[self.map_name][map_threshold])
+            if len(self.sig_clusters[self.map_name][map_threshold].keys()) > 0:
+                self.combined_sig_clustered_meshes[map_threshold] = combine_clusters_to_one_map(
+                    self.sig_clusters[self.map_name][map_threshold])
+            else:
+                self.combined_sig_clustered_meshes[map_threshold] = 'no significant clusters'
 
     def get_combined_significant_clusters(self):
         self.create_mesh_all_sig_clusters_per_threshold()
@@ -262,14 +273,16 @@ class SingleStatisticSPM(SPM):
 
         for map_threshold in self.map_threshold:
             tmp_clust = self.combined_sig_clustered_meshes[map_threshold]
-            if tmp_clust.GetNumberOfPoints() > 0:
-                self.sig_clusters_meshes[map_threshold] = transfer_clusters_to_ref_mesh(
-                    self.reference_mesh['mesh'],
-                    self.combined_sig_clustered_meshes[map_threshold]
-                )
+            if type(tmp_clust) == vtk.vtkPolyData:
+                if tmp_clust.GetNumberOfPoints() > 0:
+                    self.sig_clusters_meshes[map_threshold] = transfer_clusters_to_ref_mesh(
+                        self.reference_mesh['mesh'],
+                        tmp_clust
+                    )
+                else:
+                    self.sig_clusters_meshes[map_threshold] = 'no_significant_clusters'
             else:
                 self.sig_clusters_meshes[map_threshold] = 'no_significant_clusters'
-
 
     def get_full_mesh_sig_clusters(self):
         self.create_full_mesh_sig_clusters_per_threshold()
@@ -371,7 +384,8 @@ class SimpleTimeDifference(SingleStatisticSPM):
                                                 idx_not_to_include=self.idx_no_data,
                                                 idx_to_include=None)
         mc_sim.update()
-        self.threshold_cluster_distribution = mc_sim.get_distribution_of_max_clustersizes()
+        self.threshold_max_cluster_distribution = mc_sim.get_distribution_of_max_clustersizes()
+        self.threshold_cluster_distribution = mc_sim.get_distribution_of_all_clustersizes()
         self.threshold_cluster_size = mc_sim.get_threshold_clustersize(threshold=self.mc_cluster_extent_significance)
         self.threshold_test_statistic = mc_sim.get_threshold_test_statistic(threshold=self.mc_point_significance)
 
@@ -540,7 +554,8 @@ class SimpleCorrelation(SingleStatisticSPM):
                                                   idx_not_to_include=self.idx_no_data,
                                                   idx_to_include=None)
         mc_sim.update()
-        self.threshold_cluster_distribution = mc_sim.get_distribution_of_max_clustersizes()
+        self.threshold_max_cluster_distribution = mc_sim.get_distribution_of_max_clustersizes()
+        self.threshold_cluster_distribution = mc_sim.get_distribution_of_all_clustersizes()
         self.threshold_cluster_size = mc_sim.get_threshold_clustersize(threshold=self.mc_cluster_extent_significance)
         self.threshold_test_statistic = mc_sim.get_threshold_test_statistic(threshold=self.mc_point_significance)
 

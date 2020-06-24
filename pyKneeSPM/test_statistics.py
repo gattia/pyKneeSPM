@@ -33,7 +33,6 @@ class TestStatistics(object):
 class OneSampleZTest(TestStatistics):
 
     def compute_statistics_per_node(self):
-        print('starting stats calc')
         mean_change = np.mean(self.data, axis=0)
         std_change = np.std(self.data, axis=0, ddof=1)
         se_change = std_change / np.sqrt(self.data.shape[0])
@@ -53,11 +52,11 @@ class OneSampleZTest(TestStatistics):
         if self.return_new_mesh is True:
             self.test_statistics_mesh.GetPointData().AddArray(z_scalars)
             self.test_statistics_mesh.GetPointData().AddArray(mean_change_scalars)
-            self.test_statistics_mesh.GetPointData().SetActiveScalars('z_statistic')
+            # self.test_statistics_mesh.GetPointData().SetActiveScalars('z_statistic')
         elif self.return_new_mesh is False:
             self.mesh.GetPointData().AddArray(z_scalars)
             self.mesh.GetPointData().AddArray(mean_change_scalars)
-            self.mesh.GetPointData().SetActiveScalars('z_statistic')
+            # self.mesh.GetPointData().SetActiveScalars('z_statistic')
 
 
 class CorrelationTTest(TestStatistics):
@@ -86,11 +85,11 @@ class CorrelationTTest(TestStatistics):
         if self.return_new_mesh is True:
             self.test_statistics_mesh.GetPointData().AddArray(t_scalars)
             self.test_statistics_mesh.GetPointData().AddArray(corr_scalars)
-            self.test_statistics_mesh.GetPointData().SetActiveScalars('t_statistic')
+            # self.test_statistics_mesh.GetPointData().SetActiveScalars('t_statistic')
         elif self.return_new_mesh is False:
             self.mesh.GetPointData().AddArray(t_scalars)
             self.mesh.GetPointData().AddArray(corr_scalars)
-            self.mesh.GetPointData().SetActiveScalars('t_statistic')
+            # self.mesh.GetPointData().SetActiveScalars('t_statistic')
 
 def replace_non_finite_values(array, replace_value=0.):
     array[np.isnan(array)] = 0
