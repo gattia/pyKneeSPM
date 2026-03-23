@@ -463,7 +463,7 @@ class SimpleCorrelation(SingleStatisticSPM):
         # test to see points with primary outcome only (ignoring secondary for now)
         n_ppl_with_data_change_per_point = np.sum(self.change_values[:, :, 0] != 0, axis=0)
         self.idx_no_data = np.where(n_ppl_with_data_change_per_point <
-                                    self.percent_participants_with_data_to_include_vertex*self.n_participants)
+                                    self.percent_participants_with_data_to_include_vertex*self.change_values.shape[0])
         test = test_statistics.CorrelationTTest(self.change_values,
                                                 self.reference_mesh['mesh'],
                                                 return_new_mesh=True,

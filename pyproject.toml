@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=64", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyKneeSPM"
@@ -14,7 +14,6 @@ authors = [
 keywords = ["spm", "mesh", "statistics", "polydata"]
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "License :: OSI Approved :: MIT License",
     "Topic :: Scientific/Engineering",
 ]
 requires-python = ">=3.8"
@@ -22,7 +21,7 @@ dependencies = [
     "numpy",
     "scipy",
     "vtk",
-    "pymskt",
+    "mskt",
 ]
 
 [project.optional-dependencies]

@@ -64,8 +64,12 @@ def transfer_mesh_scalars_get_weighted_average_n_closest(new_mesh, old_mesh, n=3
         for closest_pts_idx in range(closest_ids.GetNumberOfIds()):
             pt_idx = closest_ids.GetId(closest_pts_idx)
             _point = old_mesh.GetPoint(pt_idx)
+            dist = np.sqrt(np.sum(np.square(np.asarray(point) - np.asarray(_point))))
             list_scalars.append(scalars_old_mesh[pt_idx])
-            distance_weighting.append(1 / np.sqrt(np.sum(np.square(np.asarray(point) - np.asarray(_point)))))
+            if dist == 0.0:
+                distance_weighting.append(1e16)
+            else:
+                distance_weighting.append(1 / dist)
 
         total_distance = np.sum(distance_weighting)
         normalized_value = np.sum(np.asarray(list_scalars) * np.asarray(distance_weighting)) / total_distance

@@ -60,7 +60,7 @@ class MonteCarloSingleTest(MonteCarloThreshold):
         return self.threshold_test_statistics[threshold]
 
     def calc_threshold_statistic(self, threshold=0.05):
-        threshold_idx = np.ceil((1 - threshold) * self.n_iterations).astype(np.int)
+        threshold_idx = np.ceil((1 - threshold) * self.n_iterations).astype(int)
         sorted_max_test_statistics = sorted(self.max_test_statistics[self.map_name]['abs_max'])
         self.threshold_test_statistics[threshold] = sorted_max_test_statistics[threshold_idx - 1]
 
@@ -73,7 +73,7 @@ class MonteCarloSingleTest(MonteCarloThreshold):
         return self.threshold_clustersizes[threshold]
 
     def calc_threshold_clustersize(self, threshold=0.05):
-        threshold_idx = np.ceil((1-threshold) * self.n_iterations).astype(np.int)
+        threshold_idx = np.ceil((1-threshold) * self.n_iterations).astype(int)
         sorted_max_clustersizes = sorted(self.cluster_sizes[self.map_name]['max'])
         self.threshold_clustersizes[threshold] = sorted_max_clustersizes[threshold_idx-1]
 

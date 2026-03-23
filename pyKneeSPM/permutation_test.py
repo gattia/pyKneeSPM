@@ -91,7 +91,7 @@ class PermutationCorrelationTTest(PermutationTest):
 
     def perform_permutations(self):
         n_perms = min(self.n_permutations, self.n_possible_unique_permutations)
-        self.permutation_matrix = np.zeros((n_perms, self.n_participants), dtype=np.int)
+        self.permutation_matrix = np.zeros((n_perms, self.n_participants), dtype=int)
         participants = np.arange(self.n_participants)
         self.permutation_matrix[0, :] = np.copy(participants)  # We want to have things in their normal order once
         np.random.shuffle(participants)  # shuffle so dont always get same data (if sample less than possible combos).
