@@ -126,3 +126,51 @@ Mark MC / integration tests with `@pytest.mark.slow`.
 4. `test_vtk_functions.py` — validates utilities
 5. `test_monte_carlo.py` — integration of stats + permutations + clustering
 6. `test_knee_spm.py` — full pipeline integration
+
+---
+
+## Completion Summary (2026-03-23)
+
+**Result**: 53 tests, all passing. Full suite runs in ~24s (Python 3.11, conda env `pykneespm`).
+
+### What was implemented
+
+All 6 planned test modules were implemented with all planned test cases covered. Final test counts:
+
+| Module | Tests |
+|--------|-------|
+| `test_test_statistics.py` | 14 |
+| `test_permutation_test.py` | 10 |
+| `test_clustering.py` | 6 |
+| `test_monte_carlo.py` | 6 |
+| `test_vtk_functions.py` | 6 |
+| `test_knee_spm.py` | 11 |
+
+### Deviations from the plan
+
+**Integration tests went further than planned.** The plan only called for checking that maps/thresholds *exist*. The final `test_knee_spm.py` also:
+- Injects a known spatial effect onto a specific quadrant of the mesh
+- Verifies the pipeline detects it as significant (cluster area > MC threshold)
+- Verifies the significant cluster spatially overlaps the injected effect region (coordinate matching with `_cluster_overlaps_region` helper)
+- Verifies pure noise does *not* produce significant clusters (multi-seed false-positive check, 5 seeds, allows at most 1 FP)
+
+**Two mesh fixtures instead of one.** `conftest.py` provides both `flat_grid_mesh` (10x10, 100 pts) for integration tests needing spatial separation, and `small_mesh` (5x5, 25 pts) for faster unit-style tests.
+
+**Negative/two-sided clustering tests** added beyond plan scope.
+
+### Bug fixes required during implementation
+
+Three known bugs had to be fixed for the tests to pass:
+
+1. **`np.int` removed in NumPy 1.24+** — `permutation_test.py:91`, `monte_carlo.py:63,76`. Changed to `int`.
+2. **Division by zero in `transfer_mesh_scalars`** — `vtk_functions.py:68`. Added zero-distance guard (`1e16` weight when distance is 0).
+3. **`n_participants` attribute missing** — `knee_spm.py:466` referenced `self.n_participants` which doesn't exist when using `add_change_data_directly()`. Changed to `self.change_values.shape[0]`.
+
+Config fixes also required: `pyproject.toml` build-backend and `pymskt` → `mskt` dependency name.
+
+### Notes for future work
+
+- **Cluster coordinate matching**: VTK's `vtkBandedPolyDataContourFilter` interpolates new points along contour boundaries. Cluster meshes do NOT share exact vertex coordinates with the reference mesh. Any test checking cluster spatial location needs tolerance >= 1 grid spacing unit. The current `_cluster_overlaps_region` helper uses `tol=1.1`.
+- **`replace_value` bug confirmed**: `test_replace_value_ignored_bug` documents that `replace_non_finite_values()` ignores its `replace_value` parameter (always replaces with 0). Test is written to detect when/if this is fixed.
+- **Remaining known bugs not yet fixed**: `GetAray` typo, ICP `SetMaximumNumberOfLandmarks` called after `Update()`, `threshold_cluster_size` init as `{}` vs `None`, double-init of `threshold_test_statistic` dict. These don't block tests but should be addressed.
+- **Test speed**: `@pytest.mark.slow` tests (MC/integration) take ~20s. Use `pytest -m "not slow"` for fast iteration (~3s).
