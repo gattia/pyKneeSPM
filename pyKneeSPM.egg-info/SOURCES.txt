@@ -1,4 +1,5 @@
-setup.py
+README.MD
+pyproject.toml
 pyKneeSPM/__init__.py
 pyKneeSPM/clustering.py
 pyKneeSPM/knee_spm.py
@@ -11,7 +12,12 @@ pyKneeSPM/vtk_functions.py
 pyKneeSPM.egg-info/PKG-INFO
 pyKneeSPM.egg-info/SOURCES.txt
 pyKneeSPM.egg-info/dependency_links.txt
-pyKneeSPM.egg-info/not-zip-safe
 pyKneeSPM.egg-info/requires.txt
 pyKneeSPM.egg-info/top_level.txt
 pyKneeSPM/data/change_cart_thick.vtk
+tests/test_clustering.py
+tests/test_knee_spm.py
+tests/test_monte_carlo.py
+tests/test_permutation_test.py
+tests/test_test_statistics.py
+tests/test_vtk_functions.py

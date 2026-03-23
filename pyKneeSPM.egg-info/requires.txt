@@ -1,3 +1,7 @@
-vtk
 numpy
 scipy
+vtk
+mskt
+
+[dev]
+pytest
