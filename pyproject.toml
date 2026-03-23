@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "pyKneeSPM"
+version = "0.0.1"
+description = "SPM style analysis for bone meshes"
+readme = "README.MD"
+license = "MIT"
+authors = [
+    {name = "Anthony Gatti", email = "anthony@neuralseg.com"},
+]
+keywords = ["spm", "mesh", "statistics", "polydata"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "scipy",
+    "vtk",
+    "pymskt",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[tool.setuptools.packages.find]
+include = ["pyKneeSPM*"]
+
+[tool.setuptools.package-data]
+pyKneeSPM = ["data/*.vtk"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (MC simulations, integration tests)",
+]
