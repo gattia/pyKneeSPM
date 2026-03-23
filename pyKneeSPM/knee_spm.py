@@ -7,7 +7,6 @@ from .vtk_functions import (read_vtk,
 from . import test_statistics
 from .clustering import Cluster
 from .monte_carlo import *
-import pyfocusr
 
 
 class SPM(object):
@@ -236,7 +235,7 @@ class SimpleTimeDifference(SingleStatisticSPM):
         super().__init__(*args, **kwargs)
 
     def compile_data(self):
-        # ADD LOGIC TO TEST IF CHANGE MESHES EXIST. IF THEY DO NOT, COMPUTE THEM USING FOCUSR.
+        import pyfocusr
 
         if bool(self.reference_mesh) is False:
             if self.find_ref_mesh is True:
@@ -380,11 +379,10 @@ class SimpleCorrelation(SingleStatisticSPM):
             self.dict_meshes[id]['post']['secondary_data'] = post_secondary_data
 
     def compile_data(self):
-        # ADD LOGIC TO TEST IF CHANGE MESHES EXIST. IF THEY DO NOT, COMPUTE THEM USING FOCUSR.
+        import pyfocusr
 
         if bool(self.reference_mesh) is False:
             if self.find_ref_mesh is True:
-                #  Find the template mesh ... this could take a long time.
                 raise Exception('Find template mesh not yet implemented')
             else:
                 ref_key = sorted(self.dict_meshes.keys())[0]

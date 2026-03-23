@@ -1,0 +1,85 @@
+# pyKneeSPM
+
+Statistical Parametric Mapping (SPM) for 3D knee bone surface meshes. Inspired by neuroimaging SPM — finds clusters of statistically significant change on registered bone surfaces rather than relying on manually defined ROIs.
+
+## Library Structure
+
+```
+pyKneeSPM/
+├── __init__.py              # Public API exports
+├── knee_spm.py              # Main SPM pipeline classes (orchestration layer)
+├── test_statistics.py        # Vertex-wise statistical tests (z-test, correlation t-test)
+├── permutation_test.py       # Permutation schemes for non-parametric inference
+├── monte_carlo.py            # Monte Carlo simulation for cluster-extent thresholds
+├── clustering.py             # Cluster extraction from thresholded statistic maps (VTK)
+├── vtk_functions.py          # VTK utilities (I/O, ICP, scalar transfer)
+├── main.py                   # Example data loader
+├── scratch_random_code.py    # Scratch/dev code (not used by the library)
+└── data/
+    └── change_cart_thick.vtk # Example cartilage thickness change mesh
+```
+
+## Design & Pipeline
+
+The pipeline follows the standard SPM approach:
+
+1. **Data compilation** (`compile_data`) — Register participant meshes to a common reference using ICP + pyfocusr spectral registration. Transfer scalars to the reference mesh via distance-weighted kNN interpolation. Can be skipped entirely with `add_change_data_directly()` if surfaces are already in correspondence.
+
+2. **Vertex-wise test statistics** (`compute_test_statistics`) — Compute a test statistic at every vertex. Currently: one-sample z-test (`OneSampleZTest`) and Pearson correlation t-test (`CorrelationTTest`).
+
+3. **Cluster extraction** (`cluster_test_statistics`) — Threshold the statistic map, extract contiguous clusters using VTK connectivity filters, compute cluster surface areas.
+
+4. **Permutation-based cluster-extent inference** (`compute_mc_thresholds`) — Monte Carlo simulation: generate null distributions by permuting data (sign-flip for one-sample, label-shuffle for correlation), re-run test + clustering on each permutation, collect max cluster sizes. The 95th percentile of this null distribution gives the minimum significant cluster size (family-wise error correction).
+
+### Class Hierarchy
+
+```
+SPM (base)
+└── SingleStatisticSPM (shared pipeline: thresholding, clustering, MC)
+    ├── SimpleTimeDifference — one-sample z-test on change maps
+    └── SimpleCorrelation — correlation between surface scalar and secondary variable
+```
+
+`MonteCarloThreshold` hierarchy mirrors this:
+```
+MonteCarloThreshold (base)
+└── MonteCarloSingleTest (single-map MC: null distribution, threshold calc)
+    ├── MonteCarloClusterOneSampleTest — sign-flip permutations
+    └── MonteCarloClusterCorrelationTest — label-shuffle permutations
+```
+
+### Two Data Input Modes
+
+1. **With registration** (requires `pyfocusr`): Provide mesh file paths via `add_change_filepath()` or `add_pre_post_filepaths()`. The library handles ICP alignment, spectral registration, and scalar transfer.
+
+2. **Pre-aligned data** (no pyfocusr needed): Pass a numpy array directly via `add_change_data_directly(data)` where `data` has shape `(n_participants, n_vertices)` for one-sample tests or `(n_participants, n_vertices, 2)` for correlation tests. You must also set a reference mesh via `add_reference_change_mesh()`. This mode skips `compile_data()` entirely.
+
+## Dependencies
+
+Core: `vtk`, `numpy`, `scipy`
+Optional (registration only): `pyfocusr` — lazily imported in `compile_data()`, not needed for pre-aligned data.
+
+## Installation
+
+```bash
+git clone <repo_url>
+cd pykneespm
+pip install .
+```
+
+## Tests
+
+No test suite currently exists.
+
+## Known Bugs (as of 2026-03-22)
+
+- `threshold_cluster_size` check uses `is None` but is initialized as `{}` — never triggers (knee_spm.py:81)
+- Typo `GetAray` → `GetArray` (knee_spm.py:119)
+- `np.int` deprecated/removed in NumPy 1.24 — used in permutation_test.py and monte_carlo.py
+- `replace_non_finite_values()` ignores its `replace_value` parameter (test_statistics.py:86)
+- ICP `SetMaximumNumberOfLandmarks` called after `Update()` — has no effect (vtk_functions.py:38)
+- Division by zero possible in `transfer_mesh_scalars_get_weighted_average_n_closest` when points coincide (vtk_functions.py:68)
+- `threshold_test_statistic` dict initialized twice, second overwrites first (knee_spm.py:65,76)
+- Sign permutation logic is correct but fragile — uses `> 0.5` then `< 1` instead of `np.where` (permutation_test.py:57-58)
+- `scratch_random_code.py` references undefined variables, should not be in the package
+- `requirements.txt` is empty; `.gitignore` references `pyfocusr.egg-info` instead of `pyKneeSPM.egg-info`
