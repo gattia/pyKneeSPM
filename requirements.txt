@@ -2,3 +2,4 @@ numpy
 scipy
 vtk
 pymskt
+sympy

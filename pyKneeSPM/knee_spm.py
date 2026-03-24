@@ -1,4 +1,5 @@
 import numpy as np
+import vtk
 from vtk.util.numpy_support import numpy_to_vtk, vtk_to_numpy
 from .vtk_functions import (read_vtk,
                            apply_transform,
@@ -493,6 +494,137 @@ class SimpleCorrelation(SingleStatisticSPM):
             self.threshold_test_statistic[threshold] = mc_sim.get_threshold_test_statistic(threshold=self.mc_point_significance)
 
 
+class GroupComparison(SingleStatisticSPM):
+    def __init__(self, *args, group_labels=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.group_labels_list = []
+        self.group_labels = np.asarray(group_labels) if group_labels is not None else None
+        self._prealigned_scalars = []
+
+    def add_change_data_directly(self, change_data, group_labels):
+        group_labels = np.asarray(group_labels)
+        if len(group_labels) != change_data.shape[0]:
+            raise ValueError(
+                'Number of group labels ({}) must match number of participants ({})'.format(
+                    len(group_labels), change_data.shape[0]))
+        if self.reference_mesh and 'mesh' in self.reference_mesh:
+            n_ref_pts = self.reference_mesh['mesh'].GetNumberOfPoints()
+            if change_data.shape[1] != n_ref_pts:
+                raise ValueError(
+                    'Data has {} vertices but reference mesh has {}'.format(
+                        change_data.shape[1], n_ref_pts))
+        super().add_change_data_directly(change_data)
+        self.group_labels = group_labels
+
+    def add_prealigned_filepath(self, filepath, group_label, scalar_name=None):
+        mesh = read_vtk(filepath)
+
+        if not self._prealigned_scalars and not (self.reference_mesh and 'mesh' in self.reference_mesh):
+            # First mesh becomes the reference
+            self.reference_mesh = {'filename': filepath, 'mesh': mesh, 'id': None}
+        else:
+            # Validate vertex coordinates against reference
+            ref_mesh = self.reference_mesh['mesh']
+            n_ref = ref_mesh.GetNumberOfPoints()
+            n_new = mesh.GetNumberOfPoints()
+            if n_new != n_ref:
+                raise ValueError(
+                    'Mesh has {} vertices but reference mesh has {}'.format(n_new, n_ref))
+            ref_coords = vtk_to_numpy(ref_mesh.GetPoints().GetData())
+            new_coords = vtk_to_numpy(mesh.GetPoints().GetData())
+            if not np.allclose(new_coords, ref_coords, atol=1e-6):
+                raise ValueError(
+                    'Vertex coordinates do not match reference mesh. '
+                    'Meshes must be in correspondence (same vertex positions).')
+
+        # Extract scalars
+        if scalar_name is not None:
+            arr = mesh.GetPointData().GetArray(scalar_name)
+            if arr is None:
+                raise ValueError('Scalar array "{}" not found on mesh'.format(scalar_name))
+        else:
+            arr = mesh.GetPointData().GetScalars()
+            if arr is None:
+                raise ValueError('No active scalars found on mesh')
+        scalars = vtk_to_numpy(arr)
+
+        self._prealigned_scalars.append(scalars)
+        self.group_labels_list.append(group_label)
+        self.added_change_values_directly = True
+
+    def _finalize_prealigned_data(self):
+        if not self._prealigned_scalars:
+            return
+        self.change_values = np.array(self._prealigned_scalars)
+        self.group_labels = np.asarray(self.group_labels_list)
+
+    def add_change_filepath(self, *args, group_label=None, **kwargs):
+        if group_label is None:
+            raise ValueError('group_label must be provided')
+        super().add_change_filepath(*args, **kwargs)
+        self.group_labels_list.append(group_label)
+
+    def add_pre_post_filepaths(self, *args, group_label=None, **kwargs):
+        if group_label is None:
+            raise ValueError('group_label must be provided')
+        super().add_pre_post_filepaths(*args, **kwargs)
+        self.group_labels_list.append(group_label)
+
+    def _validate_group_labels(self):
+        if self.group_labels is None:
+            raise ValueError('group_labels must be set before computing test statistics')
+        if len(self.group_labels) != self.change_values.shape[0]:
+            raise ValueError(
+                'Number of group labels ({}) must match number of participants ({})'.format(
+                    len(self.group_labels), self.change_values.shape[0]))
+
+    def update(self):
+        self._finalize_prealigned_data()
+        super().update()
 
 
+class TwoSampleComparison(GroupComparison):
+    def __init__(self, *args, map_name='t_statistic', **kwargs):
+        kwargs['map_name'] = map_name
+        super().__init__(*args, **kwargs)
+
+    def compute_test_statistics(self):
+        self._validate_group_labels()
+        n_groups = len(np.unique(self.group_labels))
+        if n_groups != 2:
+            raise ValueError(
+                'TwoSampleComparison requires exactly 2 groups, got {}'.format(n_groups))
+
+        n_ppl_with_data_per_point = np.sum(self.change_values != 0, axis=0)
+        self.idx_no_data = np.where(n_ppl_with_data_per_point <
+                                    self.percent_participants_with_data_to_include_vertex * self.change_values.shape[0])
+
+        t_test = test_statistics.IndependentSamplesTTest(
+            self.change_values,
+            self.reference_mesh['mesh'],
+            return_new_mesh=True,
+            idx_not_to_include=self.idx_no_data,
+            group_labels=self.group_labels
+        )
+        t_test.compute_statistics_per_node()
+        test_mesh = t_test.get_statistics_mesh()
+        test_mesh.GetPointData().SetActiveScalars(self.map_name)
+        self.test_statistic_maps[self.map_name] = test_mesh
+
+    def compute_mc_thresholds(self):
+        for threshold in self.map_threshold:
+            mc_sim = MonteCarloClusterTwoSampleTest(
+                self.reference_mesh['mesh'],
+                self.change_values,
+                group_labels=self.group_labels,
+                method=self.mc_cluster_method,
+                threshold=threshold,
+                n_iterations=self.n_monte_carlo_iterations,
+                idx_not_to_include=self.idx_no_data,
+                idx_to_include=None
+            )
+            mc_sim.update()
+            self.threshold_cluster_distribution[threshold] = mc_sim.get_distribution_of_max_clustersizes()
+            self.threshold_cluster_size[threshold] = mc_sim.get_threshold_clustersize(threshold=self.mc_cluster_extent_significance)
+            self.threshold_test_statistic[threshold] = mc_sim.get_threshold_test_statistic(threshold=self.mc_point_significance)
 

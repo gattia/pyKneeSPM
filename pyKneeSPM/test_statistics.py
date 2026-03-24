@@ -82,6 +82,47 @@ class CorrelationTTest(TestStatistics):
             self.mesh.GetPointData().AddArray(corr_scalars)
 
 
+class IndependentSamplesTTest(TestStatistics):
+    def __init__(self, data, mesh, return_new_mesh=True, idx_not_to_include=None, group_labels=None):
+        super().__init__(data, mesh, return_new_mesh=return_new_mesh, idx_not_to_include=idx_not_to_include)
+        self.group_labels = np.asarray(group_labels)
+
+    def compute_statistics_per_node(self):
+        unique_labels = np.unique(self.group_labels)
+        mask_a = self.group_labels == unique_labels[0]
+        mask_b = self.group_labels == unique_labels[1]
+
+        data_a = self.data[mask_a]
+        data_b = self.data[mask_b]
+
+        n_a = data_a.shape[0]
+        n_b = data_b.shape[0]
+        df = n_a + n_b - 2
+
+        mean_a = np.mean(data_a, axis=0)
+        mean_b = np.mean(data_b, axis=0)
+
+        var_a = np.var(data_a, axis=0, ddof=1)
+        var_b = np.var(data_b, axis=0, ddof=1)
+
+        pooled_var = ((n_a - 1) * var_a + (n_b - 1) * var_b) / df
+        se = np.sqrt(pooled_var * (1.0 / n_a + 1.0 / n_b))
+
+        t_statistic = (mean_a - mean_b) / se
+
+        if self.idx_not_to_include is not None:
+            t_statistic[self.idx_not_to_include] = 0
+
+        t_statistic = replace_non_finite_values(t_statistic, replace_value=0.)
+
+        t_scalars = numpy_to_vtk(t_statistic)
+        t_scalars.SetName('t_statistic')
+        if self.return_new_mesh is True:
+            self.test_statistics_mesh.GetPointData().SetScalars(t_scalars)
+        elif self.return_new_mesh is False:
+            self.mesh.GetPointData().SetScalars(t_scalars)
+
+
 def replace_non_finite_values(array, replace_value=0.):
     array[np.isnan(array)] = 0
     array[np.isinf(array)] = 0

@@ -203,4 +203,49 @@ class MonteCarloClusterCorrelationTest(MonteCarloSingleTest):
             print('Completed iteration: {}/{}'.format(iter_+1, self.n_iterations))
 
 
+class MonteCarloClusterGroupTest(MonteCarloSingleTest):
+    def __init__(self, *args, group_labels, test_statistic_class, threshold_type='two_sided', **kwargs):
+        self.group_labels = group_labels
+        self.test_statistic_class = test_statistic_class
+        self.threshold_type = threshold_type
+        self.shuffled_labels = None
+        super().__init__(*args, **kwargs)
 
+    def update_permutations(self):
+        perm = PermutationGroupLabels(group_labels=self.group_labels, n_permutations=self.n_iterations)
+        perm.update()
+        self.shuffled_labels = perm.get_shuffled_labels()
+        self.n_iterations = self.shuffled_labels.shape[0]
+
+    def perform_monte_carlo(self):
+        for iter_ in range(self.n_iterations):
+            stat_test = self.test_statistic_class(
+                data=self.data,
+                mesh=self.ref_mesh,
+                return_new_mesh=True,
+                idx_not_to_include=self.idx_not_to_include,
+                group_labels=self.shuffled_labels[iter_]
+            )
+            stat_test.compute_statistics_per_node()
+            stat_mesh = stat_test.get_statistics_mesh()
+            stat_mesh.GetPointData().SetActiveScalars(self.map_name)
+
+            scalars = vtk_to_numpy(stat_mesh.GetPointData().GetArray(self.map_name))
+            self.max_test_statistics[self.map_name]['min'].append(np.nanmin(scalars))
+            self.max_test_statistics[self.map_name]['max'].append(np.nanmax(scalars))
+            self.max_test_statistics[self.map_name]['abs_max'].append(np.nanmax(np.abs(scalars)))
+
+            clust = Cluster(statistic_mesh=stat_mesh,
+                            statistic_threshold=self.threshold,
+                            threshold_type=self.threshold_type,
+                            clust_names='cluster',
+                            clust_idx=0)
+            areas = clust.get_areas()
+            self.cluster_sizes[self.map_name]['all'].append(areas)
+            print('Completed iteration: {}/{}'.format(iter_ + 1, self.n_iterations))
+
+
+class MonteCarloClusterTwoSampleTest(MonteCarloClusterGroupTest):
+    def __init__(self, *args, map_name='t_statistic', threshold_type='two_sided', **kwargs):
+        kwargs['map_name'] = map_name
+        super().__init__(*args, test_statistic_class=IndependentSamplesTTest, threshold_type=threshold_type, **kwargs)

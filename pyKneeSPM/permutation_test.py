@@ -1,6 +1,8 @@
 import numpy as np
-from math import factorial
+from math import factorial, comb
 import itertools
+from functools import reduce
+from sympy.utilities.iterables import multiset_permutations
 
 
 class PermutationTest(object):
@@ -112,3 +114,37 @@ class PermutationCorrelationTTest(PermutationTest):
     def update(self):
         self.perform_permutations()
         self.apply_permutatations()
+
+
+class PermutationGroupLabels:
+    def __init__(self, group_labels, n_permutations):
+        self.group_labels = np.asarray(group_labels)
+        self.n_participants = len(self.group_labels)
+        self.n_permutations = n_permutations
+        self.shuffled_labels = None
+
+        # Compute number of unique permutations: multinomial coefficient n! / (n1! * n2! * ... * nk!)
+        unique, counts = np.unique(self.group_labels, return_counts=True)
+        self.n_possible_unique_permutations = factorial(self.n_participants) // reduce(
+            lambda a, b: a * b, (factorial(c) for c in counts)
+        )
+
+    def perform_permutations(self):
+        if self.n_possible_unique_permutations <= self.n_permutations:
+            # Generate all unique permutations using sympy's multiset_permutations.
+            # This is O(unique permutations), not O(n!) like itertools.permutations
+            # with deduplication. For example, 14 participants in 2 groups of 7 has
+            # C(14,7)=3,432 unique permutations but 14!=87 billion total — itertools
+            # would hang, sympy completes in ~20ms.
+            self.shuffled_labels = np.array(list(multiset_permutations(self.group_labels.tolist())))
+            self.n_permutations = len(self.shuffled_labels)
+        else:
+            self.shuffled_labels = np.zeros((self.n_permutations, self.n_participants), dtype=self.group_labels.dtype)
+            for i in range(self.n_permutations):
+                self.shuffled_labels[i] = np.random.permutation(self.group_labels)
+
+    def get_shuffled_labels(self):
+        return self.shuffled_labels
+
+    def update(self):
+        self.perform_permutations()

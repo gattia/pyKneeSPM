@@ -25,11 +25,11 @@ The pipeline follows the standard SPM approach:
 
 1. **Data compilation** (`compile_data`) — Register participant meshes to a common reference using ICP + pyfocusr spectral registration. Transfer scalars to the reference mesh via distance-weighted kNN interpolation. Can be skipped entirely with `add_change_data_directly()` if surfaces are already in correspondence.
 
-2. **Vertex-wise test statistics** (`compute_test_statistics`) — Compute a test statistic at every vertex. Currently: one-sample z-test (`OneSampleZTest`) and Pearson correlation t-test (`CorrelationTTest`).
+2. **Vertex-wise test statistics** (`compute_test_statistics`) — Compute a test statistic at every vertex. Currently: one-sample z-test (`OneSampleZTest`), Pearson correlation t-test (`CorrelationTTest`), and independent-samples t-test (`IndependentSamplesTTest`).
 
 3. **Cluster extraction** (`cluster_test_statistics`) — Threshold the statistic map, extract contiguous clusters using VTK connectivity filters, compute cluster surface areas.
 
-4. **Permutation-based cluster-extent inference** (`compute_mc_thresholds`) — Monte Carlo simulation: generate null distributions by permuting data (sign-flip for one-sample, label-shuffle for correlation), re-run test + clustering on each permutation, collect max cluster sizes. The 95th percentile of this null distribution gives the minimum significant cluster size (family-wise error correction).
+4. **Permutation-based cluster-extent inference** (`compute_mc_thresholds`) — Monte Carlo simulation: generate null distributions by permuting data (sign-flip for one-sample, label-shuffle for correlation, group-label shuffle for two-sample), re-run test + clustering on each permutation, collect max cluster sizes. The 95th percentile of this null distribution gives the minimum significant cluster size (family-wise error correction).
 
 ### Class Hierarchy
 
@@ -37,7 +37,9 @@ The pipeline follows the standard SPM approach:
 SPM (base)
 └── SingleStatisticSPM (shared pipeline: thresholding, clustering, MC)
     ├── SimpleTimeDifference — one-sample z-test on change maps
-    └── SimpleCorrelation — correlation between surface scalar and secondary variable
+    ├── SimpleCorrelation — correlation between surface scalar and secondary variable
+    └── GroupComparison — shared base for group-label-based tests
+        └── TwoSampleComparison — independent-samples t-test between two groups
 ```
 
 `MonteCarloThreshold` hierarchy mirrors this:
@@ -45,18 +47,24 @@ SPM (base)
 MonteCarloThreshold (base)
 └── MonteCarloSingleTest (single-map MC: null distribution, threshold calc)
     ├── MonteCarloClusterOneSampleTest — sign-flip permutations
-    └── MonteCarloClusterCorrelationTest — label-shuffle permutations
+    ├── MonteCarloClusterCorrelationTest — label-shuffle permutations
+    └── MonteCarloClusterGroupTest — group-label shuffle permutations
+        └── MonteCarloClusterTwoSampleTest — two-sample t-test defaults
 ```
 
-### Two Data Input Modes
+`PermutationGroupLabels` is a standalone class (does not inherit `PermutationTest`) that shuffles group labels for both two-sample and future ANOVA tests. Uses `sympy.utilities.iterables.multiset_permutations` for efficient exhaustive enumeration when the number of unique permutations is small.
 
-1. **With registration** (requires `pyfocusr`): Provide mesh file paths via `add_change_filepath()` or `add_pre_post_filepaths()`. The library handles ICP alignment, spectral registration, and scalar transfer.
+### Data Input Modes
 
-2. **Pre-aligned data** (no pyfocusr needed): Pass a numpy array directly via `add_change_data_directly(data)` where `data` has shape `(n_participants, n_vertices)` for one-sample tests or `(n_participants, n_vertices, 2)` for correlation tests. You must also set a reference mesh via `add_reference_change_mesh()`. This mode skips `compile_data()` entirely.
+1. **With registration** (requires `pyfocusr`): Provide mesh file paths via `add_change_filepath()` or `add_pre_post_filepaths()`. The library handles ICP alignment, spectral registration, and scalar transfer. Used by `SimpleTimeDifference` and `SimpleCorrelation`.
+
+2. **Pre-aligned numpy array** (no pyfocusr needed): Pass a numpy array directly via `add_change_data_directly(data)` where `data` has shape `(n_participants, n_vertices)` for one-sample/two-sample tests or `(n_participants, n_vertices, 2)` for correlation tests. You must also set a reference mesh via `add_reference_change_mesh()`. This mode skips `compile_data()` entirely.
+
+3. **Pre-aligned mesh files** (`GroupComparison` and subclasses only): Add per-participant mesh files via `add_prealigned_filepath(filepath, group_label, scalar_name)`. Vertex coordinates are validated against the reference mesh on each add — raises if they don't match. Scalars are extracted automatically. This is the recommended path for group comparisons when meshes are already in correspondence.
 
 ## Dependencies
 
-Core: `vtk`, `numpy`, `scipy`
+Core: `vtk`, `numpy`, `scipy`, `sympy`
 Optional (registration only): `pyfocusr` — lazily imported in `compile_data()`, not needed for pre-aligned data.
 
 ## Installation
@@ -69,7 +77,7 @@ pip install .
 
 ## Tests
 
-No test suite currently exists.
+Run with `pytest`. Tests cover all library modules including the two-sample t-test pipeline (86 tests total). Tests use synthetic VTK meshes — no real data files needed.
 
 ## Known Bugs (as of 2026-03-22)
 
@@ -82,4 +90,4 @@ No test suite currently exists.
 - `threshold_test_statistic` dict initialized twice, second overwrites first (knee_spm.py:65,76)
 - Sign permutation logic is correct but fragile — uses `> 0.5` then `< 1` instead of `np.where` (permutation_test.py:57-58)
 - `scratch_random_code.py` references undefined variables, should not be in the package
-- `requirements.txt` is empty; `.gitignore` references `pyfocusr.egg-info` instead of `pyKneeSPM.egg-info`
+- `.gitignore` references `pyfocusr.egg-info` instead of `pyKneeSPM.egg-info`
