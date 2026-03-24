@@ -6,9 +6,35 @@ from .clustering import Cluster
 
 
 class MonteCarloThreshold(object):
+    """Base class for Monte Carlo cluster-extent inference.
+
+    Builds a null distribution of maximum cluster sizes by repeatedly
+    permuting the data, computing a test statistic at every vertex,
+    thresholding, extracting clusters, and recording their sizes.
+    The (1 - alpha) percentile of this distribution gives the minimum
+    cluster size required for family-wise error-corrected significance.
+
+    Parameters
+    ----------
+    ref_mesh : vtkPolyData
+        Reference surface mesh (all participants registered to this).
+    data : np.ndarray
+        Participant data.  Shape is ``(n_participants, n_vertices, ...)``
+        where trailing dimensions depend on the test type.
+    method : str
+        Permutation strategy — currently only ``'permutation'`` is supported.
+    threshold : float
+        Cluster-forming threshold applied to the test statistic map.
+    n_iterations : int
+        Number of Monte Carlo iterations (permutations).
+    idx_not_to_include, idx_to_include : array-like, optional
+        Vertex indices to exclude / include.  Provide at most one; the
+        complement is computed automatically.
+    """
+
     def __init__(self,
                  ref_mesh,
-                 data,  #M = participants, N = vertices, remaining dimensions may be for more complicated designs
+                 data,
                  method='permutation',
                  threshold=2.33,
                  n_iterations=1000,
@@ -40,6 +66,13 @@ class MonteCarloThreshold(object):
 
 
 class MonteCarloSingleTest(MonteCarloThreshold):
+    """Monte Carlo inference for a single statistic map.
+
+    Collects per-iteration cluster sizes and max test statistics, then
+    computes threshold values at a given alpha level.  Subclasses define
+    ``update_permutations()`` and ``perform_monte_carlo()``.
+    """
+
     def __init__(self,
                  *args,
                  map_name='test_map',
@@ -105,105 +138,166 @@ class MonteCarloSingleTest(MonteCarloThreshold):
 
 
 class MonteCarloClusterOneSampleTest(MonteCarloSingleTest):
+    """Cluster-extent inference for one-sample z-tests using sign-flip permutations.
+
+    Permutations are applied lazily in batches to avoid materialising all
+    permuted datasets at once.
+
+    Parameters
+    ----------
+    permutation_batch_size : int
+        Number of permutations to materialise simultaneously.  Controls
+        the memory / vectorisation trade-off.  Peak memory is approximately
+        ``batch_size * n_participants * n_vertices * 8 bytes``.
+    """
+
     def __init__(self,
                  *args,
                  map_name='z_statistic',
+                 permutation_batch_size=100,
                  **kwargs):
         kwargs['map_name'] = map_name
         super().__init__(*args, **kwargs)
+        self.permutation_batch_size = permutation_batch_size
+        self.perm_test = None
 
     def update_permutations(self):
-        perm_test = PermutationOneSampleZTest(data=self.data_to_simulate,
-                                              n_permutations=self.n_iterations,
-                                              )
-        perm_test.update()
-        self.rand_permutations = perm_test.get_rand_sign_permutation_matrix()
-        self.n_iterations = self.rand_permutations.shape[0]  # For the cases where we can compute all of them and they are less than the original self.n_iterations
+        self.perm_test = PermutationOneSampleZTest(data=self.data_to_simulate,
+                                                    n_permutations=self.n_iterations,
+                                                    )
+        self.perm_test.update()
+        self.n_iterations = self.perm_test.n_permutations
 
     def perform_monte_carlo(self):
-        for iter_ in range(self.n_iterations):
+        iter_count = 0
+        for batch_start in range(0, self.n_iterations, self.permutation_batch_size):
+            batch_end = min(batch_start + self.permutation_batch_size, self.n_iterations)
+            batch = self.perm_test.apply_sign_permutation_batch(self.data_to_simulate, batch_start, batch_end)
 
-            if (self.idx_to_include is not None) & (self.method == 'permutation'):
-                change_array = np.zeros_like(self.data)
-                change_array[:, self.idx_to_include] = self.rand_permutations[iter_, :, :]
-            elif (self.idx_to_include is None) & (self.method == 'permutation'):
-                change_array = self.rand_permutations[iter_, :, :]
-            elif self.method == 'rft':
-                raise Exception('rft (random field theory) computation of cluster sizes not implemented, yet.')
+            for i in range(batch.shape[0]):
+                if (self.idx_to_include is not None) & (self.method == 'permutation'):
+                    change_array = np.zeros_like(self.data)
+                    change_array[:, self.idx_to_include] = batch[i]
+                elif (self.idx_to_include is None) & (self.method == 'permutation'):
+                    change_array = batch[i]
+                elif self.method == 'rft':
+                    raise Exception('rft (random field theory) computation of cluster sizes not implemented, yet.')
 
-            z_test = OneSampleZTest(change_array,
-                                    self.ref_mesh,
-                                    return_new_mesh=True,
-                                    idx_not_to_include=self.idx_not_to_include)
-            z_test.compute_statistics_per_node()
-            z_mesh = z_test.get_statistics_mesh()
-            z_mesh.GetPointData().SetActiveScalars(self.map_name)
+                z_test = OneSampleZTest(change_array,
+                                        self.ref_mesh,
+                                        return_new_mesh=True,
+                                        idx_not_to_include=self.idx_not_to_include)
+                z_test.compute_statistics_per_node()
+                z_mesh = z_test.get_statistics_mesh()
+                z_mesh.GetPointData().SetActiveScalars(self.map_name)
 
-            z_scalars = vtk_to_numpy(z_mesh.GetPointData().GetArray(self.map_name))
-            self.max_test_statistics[self.map_name]['min'].append(np.nanmin(z_scalars))
-            self.max_test_statistics[self.map_name]['max'].append(np.nanmax(z_scalars))
-            self.max_test_statistics[self.map_name]['abs_max'].append(np.nanmax(np.abs(z_scalars)))
+                z_scalars = vtk_to_numpy(z_mesh.GetPointData().GetArray(self.map_name))
+                self.max_test_statistics[self.map_name]['min'].append(np.nanmin(z_scalars))
+                self.max_test_statistics[self.map_name]['max'].append(np.nanmax(z_scalars))
+                self.max_test_statistics[self.map_name]['abs_max'].append(np.nanmax(np.abs(z_scalars)))
 
-            clust = Cluster(statistic_mesh=z_mesh,
-                            statistic_threshold=self.threshold,
-                            threshold_type='two_sided',
-                            clust_names='cluster',
-                            clust_idx=0)
-            areas = clust.get_areas()
-            self.cluster_sizes[self.map_name]['all'].append(areas)
-            print('Completed iteration: {}/{}'.format(iter_+1, self.n_iterations))
+                clust = Cluster(statistic_mesh=z_mesh,
+                                statistic_threshold=self.threshold,
+                                threshold_type='two_sided',
+                                clust_names='cluster',
+                                clust_idx=0)
+                areas = clust.get_areas()
+                self.cluster_sizes[self.map_name]['all'].append(areas)
+                iter_count += 1
+                print('Completed iteration: {}/{}'.format(iter_count, self.n_iterations))
+
+            del batch
 
 
 class MonteCarloClusterCorrelationTest(MonteCarloSingleTest):
+    """Cluster-extent inference for correlation t-tests using label-shuffle permutations.
+
+    Permutations are applied lazily in batches to avoid materialising all
+    permuted datasets at once.
+
+    Parameters
+    ----------
+    permutation_batch_size : int
+        Number of permutations to materialise simultaneously.  Controls
+        the memory / vectorisation trade-off.  Peak memory is approximately
+        ``batch_size * n_participants * n_vertices * 2 * 8 bytes``.
+    """
+
     def __init__(self,
                  *args,
                  map_name='t_statistic',
+                 permutation_batch_size=100,
                  **kwargs):
         kwargs['map_name'] = map_name
         super().__init__(*args, **kwargs)
+        self.permutation_batch_size = permutation_batch_size
+        self.perm_test = None
 
     def update_permutations(self):
-        perm_test = PermutationCorrelationTTest(data=self.data_to_simulate,
-                                                n_permutations=self.n_iterations)
-        perm_test.update()
-        self.rand_permutations = perm_test.get_rand_permutation_matrix()
-        # For the cases where we can compute all of them and they are less than the original self.n_iterations
-        self.n_iterations = self.rand_permutations.shape[0]
+        self.perm_test = PermutationCorrelationTTest(data=self.data_to_simulate,
+                                                     n_permutations=self.n_iterations)
+        self.perm_test.update()
+        self.n_iterations = self.perm_test.n_permutations
 
     def perform_monte_carlo(self):
-        for iter_ in range(self.n_iterations):
-            if (self.idx_to_include is not None) & (self.method == 'permutation'):
-                change_array = np.zeros_like(self.data)
-                change_array[:, self.idx_to_include] = self.rand_permutations[iter_, :, :]
-            elif (self.idx_to_include is None) & (self.method == 'permutation'):
-                change_array = self.rand_permutations[iter_, :, :]
-            elif self.method == 'rft':
-                raise Exception('rft (random field theory) computation of cluster sizes not implemented, yet.')
+        iter_count = 0
+        for batch_start in range(0, self.n_iterations, self.permutation_batch_size):
+            batch_end = min(batch_start + self.permutation_batch_size, self.n_iterations)
+            batch = self.perm_test.apply_permutation_batch(self.data_to_simulate, batch_start, batch_end)
 
-            t_test = CorrelationTTest(change_array,
-                                      self.ref_mesh,
-                                      return_new_mesh=True,
-                                      idx_not_to_include=self.idx_not_to_include)
-            t_test.compute_statistics_per_node()
-            t_mesh = t_test.get_statistics_mesh()
-            t_mesh.GetPointData().SetActiveScalars(self.map_name)
+            for i in range(batch.shape[0]):
+                if (self.idx_to_include is not None) & (self.method == 'permutation'):
+                    change_array = np.zeros_like(self.data)
+                    change_array[:, self.idx_to_include] = batch[i]
+                elif (self.idx_to_include is None) & (self.method == 'permutation'):
+                    change_array = batch[i]
+                elif self.method == 'rft':
+                    raise Exception('rft (random field theory) computation of cluster sizes not implemented, yet.')
 
-            t_scalars = vtk_to_numpy(t_mesh.GetPointData().GetArray(self.map_name))
-            self.max_test_statistics[self.map_name]['min'].append(np.nanmin(t_scalars))
-            self.max_test_statistics[self.map_name]['max'].append(np.nanmax(t_scalars))
-            self.max_test_statistics[self.map_name]['abs_max'].append(np.nanmax(np.abs(t_scalars)))
+                t_test = CorrelationTTest(change_array,
+                                          self.ref_mesh,
+                                          return_new_mesh=True,
+                                          idx_not_to_include=self.idx_not_to_include)
+                t_test.compute_statistics_per_node()
+                t_mesh = t_test.get_statistics_mesh()
+                t_mesh.GetPointData().SetActiveScalars(self.map_name)
 
-            clust = Cluster(statistic_mesh=t_mesh,
-                            statistic_threshold=self.threshold,
-                            threshold_type='two_sided',
-                            clust_names='cluster',
-                            clust_idx=0)
-            areas = clust.get_areas()
-            self.cluster_sizes[self.map_name]['all'].append(areas)
-            print('Completed iteration: {}/{}'.format(iter_+1, self.n_iterations))
+                t_scalars = vtk_to_numpy(t_mesh.GetPointData().GetArray(self.map_name))
+                self.max_test_statistics[self.map_name]['min'].append(np.nanmin(t_scalars))
+                self.max_test_statistics[self.map_name]['max'].append(np.nanmax(t_scalars))
+                self.max_test_statistics[self.map_name]['abs_max'].append(np.nanmax(np.abs(t_scalars)))
+
+                clust = Cluster(statistic_mesh=t_mesh,
+                                statistic_threshold=self.threshold,
+                                threshold_type='two_sided',
+                                clust_names='cluster',
+                                clust_idx=0)
+                areas = clust.get_areas()
+                self.cluster_sizes[self.map_name]['all'].append(areas)
+                iter_count += 1
+                print('Completed iteration: {}/{}'.format(iter_count, self.n_iterations))
+
+            del batch  # free batch memory before next batch
 
 
 class MonteCarloClusterGroupTest(MonteCarloSingleTest):
+    """Cluster-extent inference for group-comparison tests.
+
+    Generates a null distribution by shuffling group labels and re-computing
+    the test statistic on each permutation.  Already memory-efficient: only
+    the shuffled label vectors are stored, and data is never copied.
+
+    Parameters
+    ----------
+    group_labels : array-like
+        Group label for each participant.
+    test_statistic_class : class
+        The vertex-wise test statistic class to instantiate per iteration
+        (e.g. ``IndependentSamplesTTest``, ``OneWayANOVA``).
+    threshold_type : str
+        ``'two_sided'`` or ``'one_sided'``, passed to cluster extraction.
+    """
+
     def __init__(self, *args, group_labels, test_statistic_class, threshold_type='two_sided', **kwargs):
         self.group_labels = group_labels
         self.test_statistic_class = test_statistic_class
@@ -246,12 +340,24 @@ class MonteCarloClusterGroupTest(MonteCarloSingleTest):
 
 
 class MonteCarloClusterTwoSampleTest(MonteCarloClusterGroupTest):
+    """Cluster-extent inference for independent-samples t-tests.
+
+    Convenience subclass that wires ``IndependentSamplesTTest`` as the
+    test statistic and uses two-sided thresholding.
+    """
+
     def __init__(self, *args, map_name='t_statistic', threshold_type='two_sided', **kwargs):
         kwargs['map_name'] = map_name
         super().__init__(*args, test_statistic_class=IndependentSamplesTTest, threshold_type=threshold_type, **kwargs)
 
 
 class MonteCarloClusterANOVA(MonteCarloClusterGroupTest):
+    """Cluster-extent inference for one-way ANOVA F-tests.
+
+    Convenience subclass that wires ``OneWayANOVA`` as the test statistic
+    and uses one-sided thresholding (F is always positive).
+    """
+
     def __init__(self, *args, map_name='f_statistic', threshold_type='one_sided', **kwargs):
         kwargs['map_name'] = map_name
         super().__init__(*args, test_statistic_class=OneWayANOVA, threshold_type=threshold_type, **kwargs)

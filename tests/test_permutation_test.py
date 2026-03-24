@@ -17,26 +17,19 @@ class TestPermutationOneSampleZTest:
 
         # Since 8 < 100, it should compute all unique permutations
         perm.perform_sign_permutations()
-        matrix = perm.sign_permutation_matrix
-        assert matrix.shape[0] == 8
-        assert matrix.shape[1] == n_participants
-        assert matrix.shape[2] == n_participants
+        vectors = perm.get_sign_vectors()
+        assert vectors.shape == (8, n_participants)
 
-    def test_permutation_matrices_are_diagonal(self):
-        """Each sign permutation matrix should be diagonal with entries in {-1, +1}."""
+    def test_sign_vectors_are_plus_minus_one(self):
+        """Each sign vector should have entries in {-1, +1}."""
         np.random.seed(42)
         data = np.random.randn(3, 10)
         perm = PermutationOneSampleZTest(data=data, n_permutations=100)
         perm.perform_sign_permutations()
-        matrix = perm.sign_permutation_matrix
+        vectors = perm.get_sign_vectors()
 
-        for i in range(matrix.shape[0]):
-            m = matrix[i]
-            # Should be diagonal
-            np.testing.assert_array_equal(m, np.diag(np.diag(m)))
-            # Diagonal entries should be -1 or +1
-            diag = np.diag(m)
-            assert np.all((diag == 1) | (diag == -1))
+        for i in range(vectors.shape[0]):
+            assert np.all((vectors[i] == 1) | (vectors[i] == -1))
 
     def test_unique_permutations_are_unique(self):
         """All 2^n permutations should be distinct."""
@@ -44,19 +37,17 @@ class TestPermutationOneSampleZTest:
         data = np.random.randn(3, 5)
         perm = PermutationOneSampleZTest(data=data, n_permutations=100)
         perm.perform_sign_permutations()
-        matrix = perm.sign_permutation_matrix
+        vectors = perm.get_sign_vectors()
 
-        # Extract diagonals and check uniqueness
-        diags = np.array([np.diag(matrix[i]) for i in range(matrix.shape[0])])
-        unique_diags = np.unique(diags, axis=0)
-        assert len(unique_diags) == 8
+        unique_vectors = np.unique(vectors, axis=0)
+        assert len(unique_vectors) == 8
 
     def test_sign_flip_applied_correctly(self):
         """Verify applying sign permutations flips data correctly."""
         data = np.array([[1.0, 2.0], [3.0, 4.0]])  # 2 participants, 2 vertices
         perm = PermutationOneSampleZTest(data=data, n_permutations=100)
         perm.update()
-        result = perm.get_rand_sign_permutation_matrix()
+        result = perm.apply_sign_permutation_batch(data, 0, perm.n_permutations)
 
         # result shape: (n_perms, n_participants, n_vertices)
         assert result.shape[1] == 2
@@ -75,7 +66,7 @@ class TestPermutationOneSampleZTest:
 
         perm = PermutationOneSampleZTest(data=data, n_permutations=n_perms)
         perm.update()
-        result = perm.get_rand_sign_permutation_matrix()
+        result = perm.apply_sign_permutation_batch(data, 0, perm.n_permutations)
 
         assert result.shape == (n_perms, n_participants, n_vertices)
 
@@ -102,7 +93,7 @@ class TestPermutationCorrelationTTest:
 
         perm = PermutationCorrelationTTest(data=data, n_permutations=100)
         perm.update()
-        result = perm.get_rand_permutation_matrix()
+        result = perm.apply_permutation_batch(data, 0, perm.n_permutations)
 
         # result shape: (n_perms, n_participants, n_vertices, 2)
         for i in range(result.shape[0]):
@@ -116,7 +107,7 @@ class TestPermutationCorrelationTTest:
 
         perm = PermutationCorrelationTTest(data=data, n_permutations=100)
         perm.update()
-        result = perm.get_rand_permutation_matrix()
+        result = perm.apply_permutation_batch(data, 0, perm.n_permutations)
 
         original_secondary = data[:, :, 1]
         for i in range(result.shape[0]):
@@ -138,9 +129,9 @@ class TestPermutationCorrelationTTest:
 
         perm = PermutationCorrelationTTest(data=data, n_permutations=100)
         perm.update()
-        result = perm.get_rand_permutation_matrix()
 
-        assert result.shape[0] == 6  # 3! = 6 < 100
+        assert perm.n_permutations == 6  # 3! = 6 < 100
+        assert perm.get_permutation_indices().shape == (6, 3)
 
     def test_larger_n_random_permutations(self):
         """With larger n, only n_permutations are generated."""
@@ -151,6 +142,6 @@ class TestPermutationCorrelationTTest:
 
         perm = PermutationCorrelationTTest(data=data, n_permutations=n_perms)
         perm.update()
-        result = perm.get_rand_permutation_matrix()
+        result = perm.apply_permutation_batch(data, 0, perm.n_permutations)
 
         assert result.shape == (n_perms, n_participants, n_vertices, 2)
