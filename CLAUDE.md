@@ -81,15 +81,6 @@ pip install .
 
 Run with `pytest`. Tests cover all library modules including the two-sample t-test and ANOVA pipelines (103 tests total). Tests use synthetic VTK meshes — no real data files needed.
 
-## Known Bugs (as of 2026-03-22)
+## Known Bugs
 
-- `threshold_cluster_size` check uses `is None` but is initialized as `{}` — never triggers (knee_spm.py:81)
-- Typo `GetAray` → `GetArray` (knee_spm.py:119)
-- `np.int` deprecated/removed in NumPy 1.24 — used in permutation_test.py and monte_carlo.py
-- `replace_non_finite_values()` ignores its `replace_value` parameter (test_statistics.py:86)
-- ICP `SetMaximumNumberOfLandmarks` called after `Update()` — has no effect (vtk_functions.py:38)
-- Division by zero possible in `transfer_mesh_scalars_get_weighted_average_n_closest` when points coincide (vtk_functions.py:68)
-- `threshold_test_statistic` dict initialized twice, second overwrites first (knee_spm.py:65,76)
-- Sign permutation logic is correct but fragile — uses `> 0.5` then `< 1` instead of `np.where` (permutation_test.py:57-58)
-- `scratch_random_code.py` references undefined variables, should not be in the package
-- `.gitignore` references `pyfocusr.egg-info` instead of `pyKneeSPM.egg-info`
+None currently tracked. Previous bugs fixed as of 2026-03-23.

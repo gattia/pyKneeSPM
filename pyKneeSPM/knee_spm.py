@@ -63,7 +63,6 @@ class SingleStatisticSPM(SPM):
 
         # Individual voxel statistic
         self.mc_point_significance = mc_point_significance
-        self.threshold_test_statistic = {}
 
         self.idx_no_data = idx_no_data
         self.percent_participants_with_data_to_include_vertex = percent_participants_with_data_to_include_vertex
@@ -79,7 +78,7 @@ class SingleStatisticSPM(SPM):
 
     def calc_significant_clusters(self):
         # This first line is specific to the onesample test... need to extend for multi statistic tests
-        if self.threshold_cluster_size is None:
+        if not self.threshold_cluster_size:
             # The following function doesnt exist....
             # self.compute_threshold_clustersize()
             self.compute_mc_thresholds()
@@ -117,7 +116,7 @@ class SingleStatisticSPM(SPM):
         return self.threshold_test_statistic
 
     def get_n_significant_individual_points(self):
-        scalars = vtk_to_numpy(self.test_statistic_maps[self.map_name].GetPointData().GetAray(self.map_name))
+        scalars = vtk_to_numpy(self.test_statistic_maps[self.map_name].GetPointData().GetArray(self.map_name))
         n_sig_points = len(np.where(scalars > self.threshold_test_statistic[self.map_name])[0])
         return n_sig_points
 

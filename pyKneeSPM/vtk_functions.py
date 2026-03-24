@@ -32,10 +32,10 @@ def get_icp_transform(source, target, max_n_iter=1000, n_landmarks=1000, reg_mod
     elif reg_mode == 'similarity':
         icp.GetLandmarkTransform().SetModeToSimilarity()
     icp.SetMaximumNumberOfIterations(max_n_iter)
+    icp.SetMaximumNumberOfLandmarks(n_landmarks)
     icp.StartByMatchingCentroidsOn()
     icp.Modified()
     icp.Update()
-    icp.SetMaximumNumberOfLandmarks(n_landmarks)
     return icp
 
 

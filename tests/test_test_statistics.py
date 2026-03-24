@@ -228,9 +228,8 @@ class TestReplaceNonFiniteValues:
         assert np.all(np.isfinite(result))
         np.testing.assert_array_equal(result[3:], [0.0, 5.0])
 
-    def test_replace_value_ignored_bug(self):
-        """Known bug: replace_value parameter is ignored, always replaces with 0."""
+    def test_replace_value_respected(self):
+        """replace_value parameter should be used for non-finite replacements."""
         arr = np.array([np.nan, np.inf, 1.0])
         result = replace_non_finite_values(arr, replace_value=999.0)
-        # Due to the bug, values are replaced with 0, not 999
-        np.testing.assert_array_equal(result, [0.0, 0.0, 1.0])
+        np.testing.assert_array_equal(result, [999.0, 999.0, 1.0])

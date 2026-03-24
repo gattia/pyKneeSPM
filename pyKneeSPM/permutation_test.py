@@ -56,8 +56,7 @@ class PermutationOneSampleZTest(PermutationTest):
 
     def get_random_sign_permutations(self):
         sign_permutation = np.random.random_sample(self.n_participants * self.n_permutations)
-        sign_permutation[sign_permutation > 0.5] = 1
-        sign_permutation[sign_permutation < 1] = -1
+        sign_permutation = np.where(sign_permutation > 0.5, 1.0, -1.0)
         sign_permutation = np.reshape(sign_permutation, (self.n_participants, self.n_permutations))
 
         sign_permutation_matrix = np.zeros((self.n_permutations, self.n_participants, self.n_participants))

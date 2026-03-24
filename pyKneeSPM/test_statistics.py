@@ -162,7 +162,7 @@ class OneWayANOVA(TestStatistics):
 
 
 def replace_non_finite_values(array, replace_value=0.):
-    array[np.isnan(array)] = 0
-    array[np.isinf(array)] = 0
-    array[np.isneginf(array)] = 0
+    array[np.isnan(array)] = replace_value
+    array[np.isinf(array)] = replace_value
+    array[np.isneginf(array)] = replace_value
     return array
