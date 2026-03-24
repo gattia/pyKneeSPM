@@ -249,3 +249,9 @@ class MonteCarloClusterTwoSampleTest(MonteCarloClusterGroupTest):
     def __init__(self, *args, map_name='t_statistic', threshold_type='two_sided', **kwargs):
         kwargs['map_name'] = map_name
         super().__init__(*args, test_statistic_class=IndependentSamplesTTest, threshold_type=threshold_type, **kwargs)
+
+
+class MonteCarloClusterANOVA(MonteCarloClusterGroupTest):
+    def __init__(self, *args, map_name='f_statistic', threshold_type='one_sided', **kwargs):
+        kwargs['map_name'] = map_name
+        super().__init__(*args, test_statistic_class=OneWayANOVA, threshold_type=threshold_type, **kwargs)

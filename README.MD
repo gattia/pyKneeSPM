@@ -18,6 +18,7 @@ the bones to a common reference frame to enable calculation of group statistics.
 - **One-sample z-test** (`SimpleTimeDifference`) — test whether change values differ from zero across participants
 - **Correlation t-test** (`SimpleCorrelation`) — test the correlation between a surface scalar and a secondary variable
 - **Two-sample t-test** (`TwoSampleComparison`) — compare a surface scalar between two groups of participants
+- **One-way ANOVA** (`ANOVAComparison`) — omnibus test for differences across 2+ groups
 
 All tests use permutation-based cluster-extent inference to control for multiple comparisons across vertices.
 
@@ -76,6 +77,24 @@ spm.update()
 sig_clusters = spm.get_significant_clusters()
 ```
 
+### ANOVA (3+ groups)
+
+Use `ANOVAComparison` as an omnibus test, then follow up with pairwise `TwoSampleComparison` to identify which groups differ.
+
+```python
+spm = pyKneeSPM.ANOVAComparison(
+    map_threshold=3.0,
+    n_monte_carlo_iterations=10000,
+)
+
+for filepath, group in participant_data:  # group labels: 0, 1, 2, ...
+    spm.add_prealigned_filepath(filepath, group_label=group, scalar_name='thickness')
+
+spm.update()
+
+sig_clusters = spm.get_significant_clusters()
+```
+
 ### One-sample test (change from baseline)
 
 ```python
@@ -90,7 +109,7 @@ spm.update()
 
 ## How It Works
 
-1. **Vertex-wise test statistics** — compute a test statistic (z, t, or correlation) at every vertex on the surface mesh
+1. **Vertex-wise test statistics** — compute a test statistic (z, t, F, or correlation) at every vertex on the surface mesh
 2. **Cluster extraction** — threshold the statistic map and extract contiguous clusters using VTK connectivity filters
 3. **Permutation inference** — build a null distribution of maximum cluster sizes by shuffling data/labels and repeating steps 1-2 thousands of times. Clusters larger than the 95th percentile of this null distribution are significant (family-wise error corrected)
 

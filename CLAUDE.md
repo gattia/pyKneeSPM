@@ -25,7 +25,7 @@ The pipeline follows the standard SPM approach:
 
 1. **Data compilation** (`compile_data`) — Register participant meshes to a common reference using ICP + pyfocusr spectral registration. Transfer scalars to the reference mesh via distance-weighted kNN interpolation. Can be skipped entirely with `add_change_data_directly()` if surfaces are already in correspondence.
 
-2. **Vertex-wise test statistics** (`compute_test_statistics`) — Compute a test statistic at every vertex. Currently: one-sample z-test (`OneSampleZTest`), Pearson correlation t-test (`CorrelationTTest`), and independent-samples t-test (`IndependentSamplesTTest`).
+2. **Vertex-wise test statistics** (`compute_test_statistics`) — Compute a test statistic at every vertex. Currently: one-sample z-test (`OneSampleZTest`), Pearson correlation t-test (`CorrelationTTest`), independent-samples t-test (`IndependentSamplesTTest`), and one-way ANOVA F-test (`OneWayANOVA`).
 
 3. **Cluster extraction** (`cluster_test_statistics`) — Threshold the statistic map, extract contiguous clusters using VTK connectivity filters, compute cluster surface areas.
 
@@ -39,7 +39,8 @@ SPM (base)
     ├── SimpleTimeDifference — one-sample z-test on change maps
     ├── SimpleCorrelation — correlation between surface scalar and secondary variable
     └── GroupComparison — shared base for group-label-based tests
-        └── TwoSampleComparison — independent-samples t-test between two groups
+        ├── TwoSampleComparison — independent-samples t-test between two groups
+        └── ANOVAComparison — one-way ANOVA F-test across 2+ groups (one-sided clustering)
 ```
 
 `MonteCarloThreshold` hierarchy mirrors this:
@@ -49,10 +50,11 @@ MonteCarloThreshold (base)
     ├── MonteCarloClusterOneSampleTest — sign-flip permutations
     ├── MonteCarloClusterCorrelationTest — label-shuffle permutations
     └── MonteCarloClusterGroupTest — group-label shuffle permutations
-        └── MonteCarloClusterTwoSampleTest — two-sample t-test defaults
+        ├── MonteCarloClusterTwoSampleTest — two-sample t-test defaults
+        └── MonteCarloClusterANOVA — ANOVA defaults (one-sided clustering)
 ```
 
-`PermutationGroupLabels` is a standalone class (does not inherit `PermutationTest`) that shuffles group labels for both two-sample and future ANOVA tests. Uses `sympy.utilities.iterables.multiset_permutations` for efficient exhaustive enumeration when the number of unique permutations is small.
+`PermutationGroupLabels` is a standalone class (does not inherit `PermutationTest`) that shuffles group labels for both two-sample and ANOVA tests. Uses `sympy.utilities.iterables.multiset_permutations` for efficient exhaustive enumeration when the number of unique permutations is small.
 
 ### Data Input Modes
 
@@ -77,7 +79,7 @@ pip install .
 
 ## Tests
 
-Run with `pytest`. Tests cover all library modules including the two-sample t-test pipeline (86 tests total). Tests use synthetic VTK meshes — no real data files needed.
+Run with `pytest`. Tests cover all library modules including the two-sample t-test and ANOVA pipelines (103 tests total). Tests use synthetic VTK meshes — no real data files needed.
 
 ## Known Bugs (as of 2026-03-22)
 

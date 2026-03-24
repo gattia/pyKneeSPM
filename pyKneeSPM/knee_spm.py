@@ -628,3 +628,57 @@ class TwoSampleComparison(GroupComparison):
             self.threshold_cluster_size[threshold] = mc_sim.get_threshold_clustersize(threshold=self.mc_cluster_extent_significance)
             self.threshold_test_statistic[threshold] = mc_sim.get_threshold_test_statistic(threshold=self.mc_point_significance)
 
+
+class ANOVAComparison(GroupComparison):
+    def __init__(self, *args, map_name='f_statistic', **kwargs):
+        kwargs['map_name'] = map_name
+        super().__init__(*args, **kwargs)
+
+    def compute_test_statistics(self):
+        self._validate_group_labels()
+        n_groups = len(np.unique(self.group_labels))
+        if n_groups < 2:
+            raise ValueError(
+                'ANOVAComparison requires at least 2 groups, got {}'.format(n_groups))
+
+        n_ppl_with_data_per_point = np.sum(self.change_values != 0, axis=0)
+        self.idx_no_data = np.where(n_ppl_with_data_per_point <
+                                    self.percent_participants_with_data_to_include_vertex * self.change_values.shape[0])
+
+        anova = test_statistics.OneWayANOVA(
+            self.change_values,
+            self.reference_mesh['mesh'],
+            return_new_mesh=True,
+            idx_not_to_include=self.idx_no_data,
+            group_labels=self.group_labels
+        )
+        anova.compute_statistics_per_node()
+        test_mesh = anova.get_statistics_mesh()
+        test_mesh.GetPointData().SetActiveScalars(self.map_name)
+        self.test_statistic_maps[self.map_name] = test_mesh
+
+    def cluster_test_statistics(self):
+        for threshold in self.map_threshold:
+            clust = Cluster(statistic_mesh=self.test_statistic_maps[self.map_name],
+                            statistic_threshold=threshold,
+                            threshold_type='one_sided',
+                            clust_names='cluster',
+                            clust_idx=0)
+            self.clustered_test_statistic_maps[self.map_name][threshold] = clust.get_clusters()
+
+    def compute_mc_thresholds(self):
+        for threshold in self.map_threshold:
+            mc_sim = MonteCarloClusterANOVA(
+                self.reference_mesh['mesh'],
+                self.change_values,
+                group_labels=self.group_labels,
+                method=self.mc_cluster_method,
+                threshold=threshold,
+                n_iterations=self.n_monte_carlo_iterations,
+                idx_not_to_include=self.idx_no_data,
+                idx_to_include=None
+            )
+            mc_sim.update()
+            self.threshold_cluster_distribution[threshold] = mc_sim.get_distribution_of_max_clustersizes()
+            self.threshold_cluster_size[threshold] = mc_sim.get_threshold_clustersize(threshold=self.mc_cluster_extent_significance)
+            self.threshold_test_statistic[threshold] = mc_sim.get_threshold_test_statistic(threshold=self.mc_point_significance)

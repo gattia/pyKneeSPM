@@ -123,6 +123,44 @@ class IndependentSamplesTTest(TestStatistics):
             self.mesh.GetPointData().SetScalars(t_scalars)
 
 
+class OneWayANOVA(TestStatistics):
+    def __init__(self, data, mesh, return_new_mesh=True, idx_not_to_include=None, group_labels=None):
+        super().__init__(data, mesh, return_new_mesh=return_new_mesh, idx_not_to_include=idx_not_to_include)
+        self.group_labels = np.asarray(group_labels)
+
+    def compute_statistics_per_node(self):
+        unique_labels = np.unique(self.group_labels)
+        k = len(unique_labels)
+        n = self.data.shape[0]
+
+        grand_mean = np.mean(self.data, axis=0)
+
+        ssb = np.zeros(self.data.shape[1])
+        ssw = np.zeros(self.data.shape[1])
+
+        for label in unique_labels:
+            mask = self.group_labels == label
+            group_data = self.data[mask]
+            n_k = group_data.shape[0]
+            group_mean = np.mean(group_data, axis=0)
+            ssb += n_k * (group_mean - grand_mean) ** 2
+            ssw += np.sum((group_data - group_mean) ** 2, axis=0)
+
+        f_statistic = (ssb / (k - 1)) / (ssw / (n - k))
+
+        if self.idx_not_to_include is not None:
+            f_statistic[self.idx_not_to_include] = 0
+
+        f_statistic = replace_non_finite_values(f_statistic, replace_value=0.)
+
+        f_scalars = numpy_to_vtk(f_statistic)
+        f_scalars.SetName('f_statistic')
+        if self.return_new_mesh is True:
+            self.test_statistics_mesh.GetPointData().SetScalars(f_scalars)
+        elif self.return_new_mesh is False:
+            self.mesh.GetPointData().SetScalars(f_scalars)
+
+
 def replace_non_finite_values(array, replace_value=0.):
     array[np.isnan(array)] = 0
     array[np.isinf(array)] = 0
