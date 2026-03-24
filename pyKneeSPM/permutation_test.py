@@ -171,8 +171,9 @@ class PermutationCorrelationTTest(PermutationTest):
         """
         batch_indices = self.permutation_matrix[start:end]
         batch_size = end - start
-        permuted = np.tile(data, (batch_size, 1, 1, 1))  # (batch, n_subj, n_vert, 2)
-        permuted[:, :, :, 1] = data[batch_indices, :, 1]  # fancy index broadcasts over batch
+        permuted = np.empty((batch_size, self.n_participants, self.n_points, 2), dtype=data.dtype)
+        permuted[:, :, :, 0] = data[np.newaxis, :, :, 0]  # broadcast col 0 (unchanged)
+        permuted[:, :, :, 1] = data[batch_indices, :, 1]   # shuffle col 1
         return permuted
 
     def update(self):

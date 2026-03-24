@@ -154,7 +154,7 @@ class MonteCarloClusterOneSampleTest(MonteCarloSingleTest):
     def __init__(self,
                  *args,
                  map_name='z_statistic',
-                 permutation_batch_size=100,
+                 permutation_batch_size=10,
                  **kwargs):
         kwargs['map_name'] = map_name
         super().__init__(*args, **kwargs)
@@ -226,7 +226,7 @@ class MonteCarloClusterCorrelationTest(MonteCarloSingleTest):
     def __init__(self,
                  *args,
                  map_name='t_statistic',
-                 permutation_batch_size=100,
+                 permutation_batch_size=10,
                  **kwargs):
         kwargs['map_name'] = map_name
         super().__init__(*args, **kwargs)
