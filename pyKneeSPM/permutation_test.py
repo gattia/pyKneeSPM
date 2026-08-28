@@ -140,15 +140,47 @@ class PermutationCorrelationTTest(PermutationTest):
         return self.permutation_matrix
 
     def perform_permutations(self):
-        n_perms = min(self.n_permutations, self.n_possible_unique_permutations)
-        self.permutation_matrix = np.zeros((n_perms, self.n_participants), dtype=int)
+        """Build the (n_perms, n_participants) matrix of participant reorderings.
+
+        Row 0 is always the identity, so the *observed* statistic is part of the null
+        distribution.  That is the standard construction (Phipson & Smyth 2010) and gives
+        the correct ``p >= 1 / n_perms`` floor rather than a p-value that can reach 0.
+
+        Two regimes:
+          * ``n! <= n_permutations`` (n <= 7 at 10,000 iterations) — enumerate ALL n!
+            orderings exhaustively.  ``itertools.permutations(arange(n))`` yields the
+            identity first, so row 0 is still the observed ordering.
+          * otherwise — draw ``n_perms - 1`` INDEPENDENT uniform random permutations.
+
+        BUG FIX 2026-07-26 — the previous implementation was
+        ``np.random.shuffle(participants); permutations = itertools.permutations(participants)``
+        followed by ``next(permutations)`` for every row.  ``itertools.permutations``
+        enumerates lexicographically by *position*, so consecutive draws differ only in the
+        trailing elements: with 10,000 draws only the last 8 positions ever move
+        (8! = 40,320 > 10,000 >= 7! = 5,040).  Measured on the shapes this library is used
+        for: at n=694, 686 of 694 participant positions were IDENTICAL in all 10,000
+        "permutations" (at n=222, 214 of 222; every position took at most 9 distinct values).
+        The null was therefore built from ~1 effective random pairing, making the 95th
+        percentile cluster-extent threshold a single random draw — anti-conservative and
+        wildly unstable run to run (observed cluster thresholds swinging 26x between runs at
+        the same n, and every cluster p-value pinned at the 1/n_perms floor).
+        Only ``PermutationCorrelationTTest`` was affected; ``PermutationGroupLabels``
+        (two-sample / ANOVA) and ``PermutationOneSampleZTest`` already drew independently.
+        """
         participants = np.arange(self.n_participants)
-        self.permutation_matrix[0, :] = np.copy(participants)  # We want to have things in their normal order once
-        np.random.shuffle(participants)  # shuffle so dont always get same data (if sample less than possible combos).
-        permutations = itertools.permutations(participants)
-        for iter_ in range(1, n_perms):
-            self.permutation_matrix[iter_, :] = next(permutations)
-        self.n_permutations = n_perms
+
+        if self.n_possible_unique_permutations <= self.n_permutations:
+            # Exhaustive: every distinct ordering exactly once (identity first).
+            self.permutation_matrix = np.array(list(itertools.permutations(participants)),
+                                               dtype=int)
+        else:
+            n_perms = self.n_permutations
+            self.permutation_matrix = np.zeros((n_perms, self.n_participants), dtype=int)
+            self.permutation_matrix[0, :] = participants  # identity => observed statistic
+            for iter_ in range(1, n_perms):
+                self.permutation_matrix[iter_, :] = np.random.permutation(participants)
+
+        self.n_permutations = self.permutation_matrix.shape[0]
 
     def apply_permutation_batch(self, data, start, end):
         """Materialise a batch of permuted datasets.

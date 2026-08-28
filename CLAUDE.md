@@ -79,8 +79,33 @@ pip install .
 
 ## Tests
 
-Run with `pytest`. Tests cover all library modules including the two-sample t-test and ANOVA pipelines (103 tests total). Tests use synthetic VTK meshes — no real data files needed.
+Run with `pytest`. Tests cover all library modules including the two-sample t-test and ANOVA pipelines (112 tests total). Tests use synthetic VTK meshes — no real data files needed.
 
 ## Known Bugs
 
-None currently tracked. Previous bugs fixed as of 2026-03-23.
+None currently tracked.
+
+### Fixed 2026-07-26 — `PermutationCorrelationTTest` permutation degeneracy
+
+**SEVERE — invalidated every correlation / scalar-regression cluster p-value produced before this
+date.** `perform_permutations()` shuffled the participant vector **once** and then drew every
+subsequent "permutation" with `next(itertools.permutations(...))`, which enumerates
+lexicographically by position. Only the trailing ~8 elements ever moved: at n=694 with 10,000
+draws, **686 of 694 participant positions were identical in every draw**, and no position took
+more than 9 distinct values (at n=222: 214 of 222). The null distribution was therefore built from
+roughly **one** effective random pairing, so the 95th-percentile cluster-extent threshold was a
+single random draw — it moved ~8x across identical re-runs of the same data — and every cluster
+p-value landed on the `1 / n_perms` floor.
+
+Only the correlation branch was affected. `PermutationGroupLabels` (two-sample t-test, ANOVA) and
+`PermutationOneSampleZTest` already drew independently, so **ANOVA and two-sample results are not
+implicated**.
+
+Fixed to draw independent `np.random.permutation`s, with a genuinely exhaustive branch when
+`n! <= n_permutations` and the identity retained as row 0 (so the observed statistic is in the
+null and `p >= 1/n_perms`, per Phipson & Smyth 2010).
+
+Full evidence, fix and validation: [`.claude/plans/completed/permutation_degeneracy_fix_COMPLETE.md`](.claude/plans/completed/permutation_degeneracy_fix_COMPLETE.md).
+Regression tests: `tests/test_permutation_test.py::TestPermutationCorrelationTTestNonDegenerate`.
+
+Previous bugs fixed as of 2026-03-23.

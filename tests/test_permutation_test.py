@@ -145,3 +145,110 @@ class TestPermutationCorrelationTTest:
         result = perm.apply_permutation_batch(data, 0, perm.n_permutations)
 
         assert result.shape == (n_perms, n_participants, n_vertices, 2)
+
+
+class TestPermutationCorrelationTTestNonDegenerate:
+    """Regression tests for the 2026-07-26 permutation bug.
+
+    The old implementation shuffled the participant vector ONCE and then pulled successive
+    draws from ``itertools.permutations``, which enumerates lexicographically by position.
+    Consecutive draws therefore differed only in the trailing few elements: at n=694 with
+    10,000 draws, 686 of 694 positions were frozen and no position ever took more than 9
+    distinct values.  The null distribution collapsed to ~1 effective random pairing.
+    """
+
+    def test_no_position_is_frozen_across_draws(self):
+        """Every participant position must move across the permutation draws."""
+        np.random.seed(0)
+        n_participants, n_perms = 60, 500
+        data = np.random.randn(n_participants, 4, 2)
+
+        perm = PermutationCorrelationTTest(data=data, n_permutations=n_perms)
+        perm.update()
+        matrix = perm.get_permutation_indices()
+
+        # Row 0 is the identity by design; the permutations proper are rows 1..N-1.
+        frozen = [j for j in range(n_participants)
+                  if len(np.unique(matrix[1:, j])) == 1]
+        assert frozen == [], f'positions frozen across all draws: {frozen}'
+
+    def test_every_position_explores_most_participants(self):
+        """Each column should see nearly every participant index, not a handful.
+
+        Under the old scheme this was capped at ~9 regardless of n.  With independent
+        draws the expected number of distinct values in a column over ``n_perms`` draws is
+        ``n * (1 - (1 - 1/n) ** n_perms)``, i.e. essentially n once n_perms >> n.
+        """
+        np.random.seed(0)
+        n_participants, n_perms = 60, 500
+        data = np.random.randn(n_participants, 4, 2)
+
+        perm = PermutationCorrelationTTest(data=data, n_permutations=n_perms)
+        perm.update()
+        matrix = perm.get_permutation_indices()
+
+        distinct_per_position = np.array([len(np.unique(matrix[:, j]))
+                                          for j in range(n_participants)])
+        assert distinct_per_position.min() >= 0.9 * n_participants, (
+            f'min distinct values per position = {distinct_per_position.min()} '
+            f'(expected ~{n_participants})')
+
+    def test_participant_position_is_uniform(self):
+        """A given participant should land in every position with roughly equal frequency."""
+        np.random.seed(0)
+        n_participants, n_perms = 40, 4000
+        data = np.random.randn(n_participants, 3, 2)
+
+        perm = PermutationCorrelationTTest(data=data, n_permutations=n_perms)
+        perm.update()
+        matrix = perm.get_permutation_indices()[1:]  # drop the identity row
+
+        positions = np.array([int(np.flatnonzero(row == 0)[0]) for row in matrix])
+        expected_mean = (n_participants - 1) / 2.0
+        expected_sd = np.sqrt((n_participants ** 2 - 1) / 12.0)
+        # generous tolerance — this is a degeneracy check, not a strict RNG test
+        assert abs(positions.mean() - expected_mean) < 0.15 * n_participants
+        assert positions.std() > 0.7 * expected_sd
+
+    def test_identity_row_first(self):
+        """Row 0 must be the identity so the observed statistic is part of the null."""
+        np.random.seed(0)
+        for n_participants, n_perms in ((4, 10000), (30, 100)):
+            data = np.random.randn(n_participants, 3, 2)
+            perm = PermutationCorrelationTTest(data=data, n_permutations=n_perms)
+            perm.update()
+            np.testing.assert_array_equal(perm.get_permutation_indices()[0],
+                                          np.arange(n_participants))
+
+    def test_every_row_is_a_valid_permutation(self):
+        np.random.seed(0)
+        n_participants, n_perms = 25, 300
+        data = np.random.randn(n_participants, 3, 2)
+        perm = PermutationCorrelationTTest(data=data, n_permutations=n_perms)
+        perm.update()
+        matrix = perm.get_permutation_indices()
+        for i, row in enumerate(matrix):
+            np.testing.assert_array_equal(np.sort(row), np.arange(n_participants),
+                                          err_msg=f'row {i} is not a permutation')
+
+    @pytest.mark.parametrize('n_participants', [3, 5, 6])
+    def test_exhaustive_enumeration_is_complete_and_unique(self, n_participants):
+        """When n! <= n_permutations every distinct ordering appears exactly once."""
+        np.random.seed(0)
+        data = np.random.randn(n_participants, 3, 2)
+        perm = PermutationCorrelationTTest(data=data, n_permutations=10000)
+        perm.update()
+        matrix = perm.get_permutation_indices()
+
+        assert matrix.shape == (factorial(n_participants), n_participants)
+        assert perm.n_permutations == factorial(n_participants)
+        assert len(np.unique(matrix, axis=0)) == factorial(n_participants)
+
+    def test_random_branch_used_when_factorial_exceeds_request(self):
+        """n=8 has 8! = 40,320 > 10,000, so the random branch must be taken."""
+        np.random.seed(0)
+        data = np.random.randn(8, 3, 2)
+        perm = PermutationCorrelationTTest(data=data, n_permutations=10000)
+        perm.update()
+        assert perm.n_permutations == 10000
+        assert perm.get_permutation_indices().shape == (10000, 8)
