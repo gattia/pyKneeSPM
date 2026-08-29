@@ -79,11 +79,39 @@ pip install .
 
 ## Tests
 
-Run with `pytest`. Tests cover all library modules including the two-sample t-test and ANOVA pipelines (112 tests total). Tests use synthetic VTK meshes — no real data files needed.
+Run with `pytest`. Tests cover all library modules including the two-sample t-test and ANOVA pipelines (128 tests total). Tests use synthetic VTK meshes — no real data files needed.
 
 ## Known Bugs
 
 None currently tracked.
+
+### Fixed 2026-08-29 — permutation nulls were unseeded, so no result reproduced
+
+Every permutation class drew from NumPy's **global** RNG (`np.random.permutation`,
+`np.random.random_sample`) and nothing seeded it, so an analysis could not be re-run: the
+cluster-extent threshold is an order statistic of one random null and a second run draws a
+different one. Measured downstream, a cluster p-value moved **0.0059 → 0.0048** across two runs on
+identical data. Not a statistical error — the inference was valid, just not reproducible.
+
+All three classes (`PermutationTest` and its subclasses, plus the standalone
+`PermutationGroupLabels`) now take **`seed=DEFAULT_SEED`** and hold their own
+`np.random.default_rng(seed)`. Three consequences worth knowing:
+
+- **The default is a value, not `None`.** Callers written before the parameter existed became
+  reproducible without being edited — which is the point, since the published analyses call these
+  classes with no seed argument at all.
+- **A private generator, not `np.random.seed()`.** Seeding the global RNG would reach every other
+  random draw in the caller's process; a per-instance `Generator` cannot. Pinned by
+  `TestSeeding::test_global_rng_is_untouched`.
+- **`seed` is threaded up through `MonteCarlo*` and `SingleStatisticSPM`**, so a caller can record
+  the seed it used, and a study can re-draw a different null (`seed=<other int>`) to check a result
+  is not an artifact of one. `seed=None` restores the old non-reproducible behaviour.
+
+⚠️ Seeding fixes *reproducibility*, not *sensitivity to the null* — a result that only survives one
+seed was never a result. Re-run with a couple of seeds if a cluster sits near the threshold.
+
+Regression tests: `tests/test_permutation_test.py::TestSeeding` and `::TestMonteCarloSeeding`
+(the latter runs the whole Monte Carlo twice and requires an identical null distribution).
 
 ### Fixed 2026-07-26 — `PermutationCorrelationTTest` permutation degeneracy
 

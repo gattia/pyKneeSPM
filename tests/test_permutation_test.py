@@ -2,7 +2,10 @@ import numpy as np
 import pytest
 from math import factorial
 
-from pyKneeSPM.permutation_test import PermutationOneSampleZTest, PermutationCorrelationTTest
+from pyKneeSPM.permutation_test import (PermutationOneSampleZTest,
+                                        PermutationCorrelationTTest,
+                                        PermutationGroupLabels,
+                                        DEFAULT_SEED)
 
 
 class TestPermutationOneSampleZTest:
@@ -252,3 +255,225 @@ class TestPermutationCorrelationTTestNonDegenerate:
         perm.update()
         assert perm.n_permutations == 10000
         assert perm.get_permutation_indices().shape == (10000, 8)
+
+
+class TestSeeding:
+    """The permutation null is reproducible given a seed (2026-08-29).
+
+    Before this, every permutation class drew from NumPy's global RNG with no
+    seeding anywhere, so an analysis could not be re-run: the cluster-extent
+    threshold is an order statistic of one random null, and a second run drew a
+    different one.  Measured on the study this library was written for, a
+    cluster p-value moved 0.0059 -> 0.0048 between two runs on *identical* data.
+
+    What these tests pin down:
+      * same seed  -> identical permutations, and identical cluster thresholds
+        downstream (``test_monte_carlo_*``, the property the paper needs);
+      * no seed    -> still identical, because the default is a fixed value and
+        not ``None`` (so callers written before the parameter existed became
+        reproducible without being edited);
+      * ``seed=None`` -> a fresh draw, for anyone who wants the old behaviour;
+      * different seeds -> different nulls, which is what makes the default a
+        choice of null rather than a degenerate one;
+      * the global RNG is untouched, so seeding here cannot silently change any
+        other randomness in a caller's process.
+    """
+
+    N_PARTICIPANTS = 30  # above the exhaustive-enumeration cutoff for both classes
+    N_PERMS = 60
+
+    def _correlation_data(self):
+        return np.random.default_rng(0).standard_normal((self.N_PARTICIPANTS, 4, 2))
+
+    def _sign_data(self):
+        return np.random.default_rng(1).standard_normal((self.N_PARTICIPANTS, 4))
+
+    def test_default_seed_constant_is_what_gets_used(self):
+        """Pin the default, since it is the value every published run used."""
+        data = self._correlation_data()
+        perm = PermutationCorrelationTTest(data=data, n_permutations=self.N_PERMS)
+        assert perm.seed == DEFAULT_SEED
+
+        explicit = PermutationCorrelationTTest(data=data, n_permutations=self.N_PERMS,
+                                               seed=DEFAULT_SEED)
+        perm.update()
+        explicit.update()
+        np.testing.assert_array_equal(perm.get_permutation_indices(),
+                                      explicit.get_permutation_indices())
+
+    # -- PermutationCorrelationTTest ------------------------------------- #
+    def test_correlation_same_seed_matches_exactly(self):
+        data = self._correlation_data()
+        first = PermutationCorrelationTTest(data=data, n_permutations=self.N_PERMS, seed=1234)
+        second = PermutationCorrelationTTest(data=data, n_permutations=self.N_PERMS, seed=1234)
+        first.update()
+        second.update()
+        np.testing.assert_array_equal(first.get_permutation_indices(),
+                                      second.get_permutation_indices())
+
+    def test_correlation_default_seed_is_deterministic(self):
+        """No seed argument at all -- the pre-existing call signature."""
+        data = self._correlation_data()
+        first = PermutationCorrelationTTest(data=data, n_permutations=self.N_PERMS)
+        second = PermutationCorrelationTTest(data=data, n_permutations=self.N_PERMS)
+        first.update()
+        second.update()
+        np.testing.assert_array_equal(first.get_permutation_indices(),
+                                      second.get_permutation_indices())
+
+    def test_correlation_different_seeds_differ(self):
+        data = self._correlation_data()
+        first = PermutationCorrelationTTest(data=data, n_permutations=self.N_PERMS, seed=1)
+        second = PermutationCorrelationTTest(data=data, n_permutations=self.N_PERMS, seed=2)
+        first.update()
+        second.update()
+        assert not np.array_equal(first.get_permutation_indices(),
+                                  second.get_permutation_indices())
+
+    def test_correlation_seed_none_is_a_fresh_draw(self):
+        data = self._correlation_data()
+        first = PermutationCorrelationTTest(data=data, n_permutations=self.N_PERMS, seed=None)
+        second = PermutationCorrelationTTest(data=data, n_permutations=self.N_PERMS, seed=None)
+        first.update()
+        second.update()
+        assert not np.array_equal(first.get_permutation_indices(),
+                                  second.get_permutation_indices())
+
+    # -- PermutationOneSampleZTest ---------------------------------------- #
+    def test_sign_flip_same_seed_matches_exactly(self):
+        data = self._sign_data()
+        first = PermutationOneSampleZTest(data=data, n_permutations=self.N_PERMS, seed=1234)
+        second = PermutationOneSampleZTest(data=data, n_permutations=self.N_PERMS, seed=1234)
+        first.update()
+        second.update()
+        np.testing.assert_array_equal(first.get_sign_vectors(), second.get_sign_vectors())
+
+    def test_sign_flip_default_seed_is_deterministic(self):
+        data = self._sign_data()
+        first = PermutationOneSampleZTest(data=data, n_permutations=self.N_PERMS)
+        second = PermutationOneSampleZTest(data=data, n_permutations=self.N_PERMS)
+        first.update()
+        second.update()
+        np.testing.assert_array_equal(first.get_sign_vectors(), second.get_sign_vectors())
+
+    def test_sign_flip_different_seeds_differ(self):
+        data = self._sign_data()
+        first = PermutationOneSampleZTest(data=data, n_permutations=self.N_PERMS, seed=1)
+        second = PermutationOneSampleZTest(data=data, n_permutations=self.N_PERMS, seed=2)
+        first.update()
+        second.update()
+        assert not np.array_equal(first.get_sign_vectors(), second.get_sign_vectors())
+
+    # -- PermutationGroupLabels -------------------------------------------- #
+    def test_group_labels_same_seed_matches_exactly(self):
+        labels = np.array([0] * 15 + [1] * 15)  # C(30,15) >> n_permutations
+        first = PermutationGroupLabels(group_labels=labels, n_permutations=self.N_PERMS, seed=1234)
+        second = PermutationGroupLabels(group_labels=labels, n_permutations=self.N_PERMS, seed=1234)
+        first.update()
+        second.update()
+        np.testing.assert_array_equal(first.get_shuffled_labels(),
+                                      second.get_shuffled_labels())
+
+    def test_group_labels_default_seed_is_deterministic(self):
+        labels = np.array([0] * 15 + [1] * 15)
+        first = PermutationGroupLabels(group_labels=labels, n_permutations=self.N_PERMS)
+        second = PermutationGroupLabels(group_labels=labels, n_permutations=self.N_PERMS)
+        first.update()
+        second.update()
+        np.testing.assert_array_equal(first.get_shuffled_labels(),
+                                      second.get_shuffled_labels())
+
+    def test_group_labels_different_seeds_differ(self):
+        labels = np.array([0] * 15 + [1] * 15)
+        first = PermutationGroupLabels(group_labels=labels, n_permutations=self.N_PERMS, seed=1)
+        second = PermutationGroupLabels(group_labels=labels, n_permutations=self.N_PERMS, seed=2)
+        first.update()
+        second.update()
+        assert not np.array_equal(first.get_shuffled_labels(), second.get_shuffled_labels())
+
+    # -- The seed must not leak into, or out of, the global RNG ------------ #
+    def test_global_rng_is_untouched(self):
+        """Seeding here must not perturb anything else in the caller's process.
+
+        The old implementation consumed draws from ``np.random``, so running a
+        permutation test shifted every later ``np.random`` call in the program.
+        """
+        data = self._correlation_data()
+        np.random.seed(7)
+        before = np.random.random(3)
+
+        np.random.seed(7)
+        perm = PermutationCorrelationTTest(data=data, n_permutations=self.N_PERMS, seed=99)
+        perm.update()
+        after = np.random.random(3)
+
+        np.testing.assert_array_equal(before, after)
+
+    def test_result_does_not_depend_on_global_seed(self):
+        """Two different global seeds, one instance seed -> the same permutations."""
+        data = self._correlation_data()
+        np.random.seed(1)
+        first = PermutationCorrelationTTest(data=data, n_permutations=self.N_PERMS, seed=99)
+        first.update()
+        np.random.seed(2)
+        second = PermutationCorrelationTTest(data=data, n_permutations=self.N_PERMS, seed=99)
+        second.update()
+        np.testing.assert_array_equal(first.get_permutation_indices(),
+                                      second.get_permutation_indices())
+
+
+@pytest.mark.slow
+class TestMonteCarloSeeding:
+    """The seed reaches the cluster-extent threshold, which is what p-values use.
+
+    Seeding the permutation classes only matters if it survives the two layers
+    above them (``MonteCarlo*`` and the ``SPM`` classes).  These run the whole
+    Monte Carlo twice on a 25-vertex mesh and require the null distribution --
+    every entry of it -- to be identical.
+    """
+
+    def _run_correlation(self, mesh, data, seed):
+        from pyKneeSPM.monte_carlo import MonteCarloClusterCorrelationTest
+        mc = MonteCarloClusterCorrelationTest(
+            mesh, data, method='permutation', threshold=2.33, n_iterations=30,
+            **({} if seed == 'default' else {'seed': seed}))
+        mc.update()
+        return mc
+
+    def test_correlation_null_distribution_is_reproducible(self, small_mesh):
+        n_vertices = small_mesh.GetNumberOfPoints()
+        data = np.random.default_rng(3).standard_normal((20, n_vertices, 2))
+
+        first = self._run_correlation(small_mesh, data, 4321)
+        second = self._run_correlation(small_mesh, data, 4321)
+
+        np.testing.assert_array_equal(first.get_distribution_of_max_clustersizes(),
+                                      second.get_distribution_of_max_clustersizes())
+        assert (first.get_threshold_clustersize(0.05)
+                == second.get_threshold_clustersize(0.05))
+
+    def test_correlation_default_seed_is_reproducible(self, small_mesh):
+        """The property the published figure depends on: no seed passed anywhere."""
+        n_vertices = small_mesh.GetNumberOfPoints()
+        data = np.random.default_rng(3).standard_normal((20, n_vertices, 2))
+
+        first = self._run_correlation(small_mesh, data, 'default')
+        second = self._run_correlation(small_mesh, data, 'default')
+
+        np.testing.assert_array_equal(first.get_distribution_of_max_clustersizes(),
+                                      second.get_distribution_of_max_clustersizes())
+
+    def test_one_sample_null_distribution_is_reproducible(self, small_mesh):
+        from pyKneeSPM.monte_carlo import MonteCarloClusterOneSampleTest
+        n_vertices = small_mesh.GetNumberOfPoints()
+        data = np.random.default_rng(5).standard_normal((20, n_vertices))
+
+        distributions = []
+        for _ in range(2):
+            mc = MonteCarloClusterOneSampleTest(
+                small_mesh, data, method='permutation', threshold=2.33,
+                n_iterations=30, seed=777)
+            mc.update()
+            distributions.append(mc.get_distribution_of_max_clustersizes())
+
+        np.testing.assert_array_equal(*distributions)

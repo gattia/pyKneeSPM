@@ -5,6 +5,24 @@ from functools import reduce
 from sympy.utilities.iterables import multiset_permutations
 
 
+#: Seed used when a caller does not supply one.
+#:
+#: Permutation inference draws a random null, so an unseeded run is not
+#: reproducible: the cluster-extent threshold is an order statistic of that
+#: draw, and re-running the same analysis on the same data moves the cluster
+#: p-values in the third or fourth decimal. Defaulting the seed rather than
+#: leaving it ``None`` means every caller -- including ones written before this
+#: parameter existed -- becomes reproducible without changing a line.
+#:
+#: ⚠️ It does NOT make the null degenerate. Each of the ``n_permutations`` draws
+#: still comes from a different state of the generator; the seed fixes only
+#: *which* random null is drawn, not how random it is. Pass a different ``seed``
+#: to sample a different null and confirm a result is not an artifact of one.
+#:
+#: The value is the date the seeding landed, and carries no other meaning.
+DEFAULT_SEED = 20260829
+
+
 class PermutationTest(object):
     """Base class for permutation schemes used in non-parametric inference.
 
@@ -26,12 +44,28 @@ class PermutationTest(object):
         Vertex indices to include.  When provided, only these vertices are
         used during permutation generation (the original full data is kept
         in ``self.orig_data``).
+    seed : int or np.random.Generator or None, optional
+        Seed for this instance's random number generator.  Defaults to
+        ``DEFAULT_SEED``, so two runs of the same analysis draw the same null
+        and produce identical cluster p-values.  Pass an ``int`` for a
+        different but still reproducible null, an existing ``Generator`` to
+        share a stream, or ``None`` for a non-reproducible fresh draw.
+
+    Notes
+    -----
+    The generator is created once, at construction, and every draw advances
+    it.  So the *sequence* of permutations is deterministic given the seed,
+    but calling ``update()`` twice on one instance does not repeat itself --
+    build a new instance for that.
     """
 
     def __init__(self,
                  data,
                  n_permutations,
-                 idx_to_include=None):
+                 idx_to_include=None,
+                 seed=DEFAULT_SEED):
+        self.seed = seed
+        self.rng = np.random.default_rng(seed)
         if idx_to_include is not None:
             self.orig_data = data
             self.data = data[:, idx_to_include]
@@ -67,7 +101,7 @@ class PermutationOneSampleZTest(PermutationTest):
         unique_permutations = np.ones((self.n_participants, 1))
         while unique_permutations.shape[1] < self.n_possible_unique_permutations:
 
-            sign_permutation = np.random.random_sample(self.n_participants * n_tests)
+            sign_permutation = self.rng.random(self.n_participants * n_tests)
             sign_permutation[sign_permutation > 0.5] = 1
             sign_permutation[sign_permutation < 1] = -1
             sign_permutation = np.reshape(sign_permutation, (self.n_participants,
@@ -80,7 +114,7 @@ class PermutationOneSampleZTest(PermutationTest):
         return unique_permutations.T
 
     def get_random_sign_vectors(self):
-        sign_permutation = np.random.random_sample(self.n_participants * self.n_permutations)
+        sign_permutation = self.rng.random(self.n_participants * self.n_permutations)
         sign_permutation = np.where(sign_permutation > 0.5, 1.0, -1.0)
         # Return as (n_perms, n_participants)
         return np.reshape(sign_permutation, (self.n_permutations, self.n_participants))
@@ -178,7 +212,7 @@ class PermutationCorrelationTTest(PermutationTest):
             self.permutation_matrix = np.zeros((n_perms, self.n_participants), dtype=int)
             self.permutation_matrix[0, :] = participants  # identity => observed statistic
             for iter_ in range(1, n_perms):
-                self.permutation_matrix[iter_, :] = np.random.permutation(participants)
+                self.permutation_matrix[iter_, :] = self.rng.permutation(participants)
 
         self.n_permutations = self.permutation_matrix.shape[0]
 
@@ -230,9 +264,16 @@ class PermutationGroupLabels:
         Group label for each participant (e.g. ``[0, 0, 1, 1, 1]``).
     n_permutations : int
         Requested number of permutations.
+    seed : int or np.random.Generator or None, optional
+        Seed for this instance's random number generator; see
+        ``DEFAULT_SEED``.  Only used in the random-shuffle regime -- the
+        exhaustive branch enumerates every unique labelling and is already
+        deterministic.
     """
 
-    def __init__(self, group_labels, n_permutations):
+    def __init__(self, group_labels, n_permutations, seed=DEFAULT_SEED):
+        self.seed = seed
+        self.rng = np.random.default_rng(seed)
         self.group_labels = np.asarray(group_labels)
         self.n_participants = len(self.group_labels)
         self.n_permutations = n_permutations
@@ -256,7 +297,7 @@ class PermutationGroupLabels:
         else:
             self.shuffled_labels = np.zeros((self.n_permutations, self.n_participants), dtype=self.group_labels.dtype)
             for i in range(self.n_permutations):
-                self.shuffled_labels[i] = np.random.permutation(self.group_labels)
+                self.shuffled_labels[i] = self.rng.permutation(self.group_labels)
 
     def get_shuffled_labels(self):
         return self.shuffled_labels

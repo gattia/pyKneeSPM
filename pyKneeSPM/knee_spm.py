@@ -42,6 +42,7 @@ class SingleStatisticSPM(SPM):
                  idx_no_data=None,
                  percent_participants_with_data_to_include_vertex=0.5,
                  registration_max_iterations=1000,
+                 seed=DEFAULT_SEED,
                  **kwargs
                  ):
         super().__init__(*args, **kwargs)
@@ -60,6 +61,10 @@ class SingleStatisticSPM(SPM):
         self.mc_cluster_method = mc_cluster_method
         self.mc_cluster_extent_significance = mc_cluster_extent_significance
         self.n_monte_carlo_iterations = n_monte_carlo_iterations
+        # Seed for the Monte Carlo null, so the cluster-extent threshold and
+        # every cluster p-value below it reproduce exactly across runs.
+        # See permutation_test.DEFAULT_SEED.
+        self.seed = seed
 
         # Individual voxel statistic
         self.mc_point_significance = mc_point_significance
@@ -316,7 +321,8 @@ class SimpleTimeDifference(SingleStatisticSPM):
                                                     threshold=threshold,
                                                     n_iterations=self.n_monte_carlo_iterations,
                                                     idx_not_to_include=self.idx_no_data,
-                                                    idx_to_include=None)
+                                                    idx_to_include=None,
+                                                    seed=self.seed)
             mc_sim.update()
             self.threshold_cluster_distribution[threshold] = mc_sim.get_distribution_of_max_clustersizes()
             self.threshold_cluster_size[threshold] = mc_sim.get_threshold_clustersize(threshold=self.mc_cluster_extent_significance)
@@ -486,7 +492,8 @@ class SimpleCorrelation(SingleStatisticSPM):
                                                       threshold=threshold,
                                                       n_iterations=self.n_monte_carlo_iterations,
                                                       idx_not_to_include=self.idx_no_data,
-                                                      idx_to_include=None)
+                                                      idx_to_include=None,
+                                                      seed=self.seed)
             mc_sim.update()
             self.threshold_cluster_distribution[threshold] = mc_sim.get_distribution_of_max_clustersizes()
             self.threshold_cluster_size[threshold] = mc_sim.get_threshold_clustersize(threshold=self.mc_cluster_extent_significance)
@@ -620,7 +627,8 @@ class TwoSampleComparison(GroupComparison):
                 threshold=threshold,
                 n_iterations=self.n_monte_carlo_iterations,
                 idx_not_to_include=self.idx_no_data,
-                idx_to_include=None
+                idx_to_include=None,
+                seed=self.seed
             )
             mc_sim.update()
             self.threshold_cluster_distribution[threshold] = mc_sim.get_distribution_of_max_clustersizes()
@@ -675,7 +683,8 @@ class ANOVAComparison(GroupComparison):
                 threshold=threshold,
                 n_iterations=self.n_monte_carlo_iterations,
                 idx_not_to_include=self.idx_no_data,
-                idx_to_include=None
+                idx_to_include=None,
+                seed=self.seed
             )
             mc_sim.update()
             self.threshold_cluster_distribution[threshold] = mc_sim.get_distribution_of_max_clustersizes()

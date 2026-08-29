@@ -30,6 +30,16 @@ class MonteCarloThreshold(object):
     idx_not_to_include, idx_to_include : array-like, optional
         Vertex indices to exclude / include.  Provide at most one; the
         complement is computed automatically.
+    seed : int or np.random.Generator or None, optional
+        Seed handed to the permutation scheme, so the null this Monte Carlo
+        builds -- and therefore the cluster-extent threshold and every cluster
+        p-value derived from it -- is reproducible.  See
+        ``permutation_test.DEFAULT_SEED``.
+
+        Note that when ``threshold`` is a list, the calling SPM builds one
+        ``MonteCarlo*`` per threshold; each gets the same seed and therefore the
+        same permutations, so the thresholds are compared on one realisation of
+        the null rather than several.
     """
 
     def __init__(self,
@@ -39,7 +49,9 @@ class MonteCarloThreshold(object):
                  threshold=2.33,
                  n_iterations=1000,
                  idx_not_to_include=None,
-                 idx_to_include=None):
+                 idx_to_include=None,
+                 seed=DEFAULT_SEED):
+        self.seed = seed
         self.ref_mesh = ref_mesh
         self.data = data
         self.n_participants, self.n_points = data.shape[:2]
@@ -164,6 +176,7 @@ class MonteCarloClusterOneSampleTest(MonteCarloSingleTest):
     def update_permutations(self):
         self.perm_test = PermutationOneSampleZTest(data=self.data_to_simulate,
                                                     n_permutations=self.n_iterations,
+                                                    seed=self.seed,
                                                     )
         self.perm_test.update()
         self.n_iterations = self.perm_test.n_permutations
@@ -235,7 +248,8 @@ class MonteCarloClusterCorrelationTest(MonteCarloSingleTest):
 
     def update_permutations(self):
         self.perm_test = PermutationCorrelationTTest(data=self.data_to_simulate,
-                                                     n_permutations=self.n_iterations)
+                                                     n_permutations=self.n_iterations,
+                                                     seed=self.seed)
         self.perm_test.update()
         self.n_iterations = self.perm_test.n_permutations
 
@@ -306,7 +320,9 @@ class MonteCarloClusterGroupTest(MonteCarloSingleTest):
         super().__init__(*args, **kwargs)
 
     def update_permutations(self):
-        perm = PermutationGroupLabels(group_labels=self.group_labels, n_permutations=self.n_iterations)
+        perm = PermutationGroupLabels(group_labels=self.group_labels,
+                                      n_permutations=self.n_iterations,
+                                      seed=self.seed)
         perm.update()
         self.shuffled_labels = perm.get_shuffled_labels()
         self.n_iterations = self.shuffled_labels.shape[0]
